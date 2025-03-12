@@ -53,4 +53,14 @@ dependencies {
 
     implementation("org.fourthline.cling:cling-core:2.1.2")
     implementation("org.fourthline.cling:cling-support:2.1.2")
+
+    // https://mvnrepository.com/artifact/org.eclipse.jetty/jetty-servlet
+    implementation("org.eclipse.jetty:jetty-servlet:8.1.22.v20160922")
+// https://mvnrepository.com/artifact/org.eclipse.jetty/jetty-server
+    implementation("org.eclipse.jetty:jetty-server:8.1.22.v20160922")
+// https://mvnrepository.com/artifact/org.eclipse.jetty/jetty-client
+    implementation("org.eclipse.jetty:jetty-client:8.1.22.v20160922")
+// https://mvnrepository.com/artifact/org.slf4j/slf4j-jdk14
+    testImplementation("org.slf4j:slf4j-jdk14:1.7.25")
+
 }
