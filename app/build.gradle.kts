@@ -62,5 +62,7 @@ dependencies {
     implementation("org.eclipse.jetty:jetty-client:8.1.22.v20160922")
 // https://mvnrepository.com/artifact/org.slf4j/slf4j-jdk14
     testImplementation("org.slf4j:slf4j-jdk14:1.7.25")
+// https://mvnrepository.com/artifact/javax.servlet/javax.servlet-api
+    implementation("javax.servlet:javax.servlet-api:3.1.0")
 
 }

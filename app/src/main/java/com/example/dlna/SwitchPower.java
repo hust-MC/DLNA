@@ -2,11 +2,20 @@ package com.example.dlna;
 
 import org.fourthline.cling.binding.annotations.*;
 
-@UpnpService(
-        serviceId = @UpnpServiceId("SwitchPower"),
-        serviceType = @UpnpServiceType(value = "SwitchPower", version = 1)
-)
+import java.beans.PropertyChangeSupport;
+
+@UpnpService(serviceId = @UpnpServiceId("SwitchPower"), serviceType = @UpnpServiceType(value = "SwitchPower", version = 1))
 public class SwitchPower {
+
+    private final PropertyChangeSupport propertyChangeSupport;
+
+    public SwitchPower() {
+        this.propertyChangeSupport = new PropertyChangeSupport(this);
+    }
+
+    public PropertyChangeSupport getPropertyChangeSupport() {
+        return propertyChangeSupport;
+    }
 
     @UpnpStateVariable(defaultValue = "0", sendEvents = false)
     private boolean target = false;
@@ -15,11 +24,18 @@ public class SwitchPower {
     private boolean status = false;
 
     @UpnpAction
-    public void setTarget(@UpnpInputArgument(name = "NewTargetValue")
-                          boolean newTargetValue) {
+    public void setTarget(@UpnpInputArgument(name = "NewTargetValue") boolean newTargetValue) {
+        boolean targetOldValue = target;
         target = newTargetValue;
+        boolean statusOldValue = status;
         status = newTargetValue;
-        System.out.println("Switch is: " + status);
+
+        // These have no effect on the UPnP monitoring but it's JavaBean compliant
+        getPropertyChangeSupport().firePropertyChange("target", targetOldValue, target);
+        getPropertyChangeSupport().firePropertyChange("status", statusOldValue, status);
+
+        // This will send a UPnP event, it's the name of a state variable that sends events
+        getPropertyChangeSupport().firePropertyChange("Status", statusOldValue, status);
     }
 
     @UpnpAction(out = @UpnpOutputArgument(name = "RetTargetValue"))
@@ -29,9 +45,6 @@ public class SwitchPower {
 
     @UpnpAction(out = @UpnpOutputArgument(name = "ResultStatus"))
     public boolean getStatus() {
-        // If you want to pass extra UPnP information on error:
-        // throw new ActionException(ErrorCode.ACTION_NOT_AUTHORIZED);
         return status;
     }
-
 }
