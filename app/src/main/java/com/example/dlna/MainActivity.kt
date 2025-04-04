@@ -12,9 +12,11 @@ import android.widget.TextView
 
 /**
  * 主活动界面
- * 
+ *
  * 该活动是应用程序的主要入口点，用于控制DLNA服务的启动和停止。
  * 它提供了简单的用户界面，显示服务状态并允许用户通过按钮交互启停服务。
+ *
+ * @author Max
  */
 class MainActivity : Activity() {
     companion object {
