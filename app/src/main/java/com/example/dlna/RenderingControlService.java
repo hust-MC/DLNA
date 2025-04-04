@@ -19,6 +19,9 @@ public class RenderingControlService {
     @UpnpStateVariable(defaultValue = "0", sendEvents = false, name = "InstanceID")
     private UnsignedIntegerFourBytes instanceId;
 
+    @UpnpStateVariable(defaultValue = "Master", sendEvents = false, name = "Channel")
+    private String channel;
+
     @UpnpStateVariable(defaultValue = "0")
     private UnsignedIntegerTwoBytes volume;
 
