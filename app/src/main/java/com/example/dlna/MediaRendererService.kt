@@ -1,5 +1,9 @@
 package com.example.dlna
 
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import org.fourthline.cling.binding.annotations.UpnpAction
 import org.fourthline.cling.binding.annotations.UpnpInputArgument
 import org.fourthline.cling.binding.annotations.UpnpOutputArgument
@@ -14,306 +18,320 @@ import org.fourthline.cling.model.types.UnsignedIntegerFourBytes
  * 
  * 该服务实现了UPnP AVTransport服务规范，用于控制媒体播放和传输。
  * 它处理媒体URI的设置、播放控制（播放、暂停、停止）以及进度控制（跳转）等功能。
+ * @author Max
  */
 @UpnpService(
     serviceId = UpnpServiceId("AVTransport"),
     serviceType = UpnpServiceType(value = "AVTransport", version = 1)
 )
 class MediaRendererService {
+    
+    /** 日志标签 */
+    private val TAG = "MediaRendererService"
+    
+    init {
+        // 在初始化时保存实例引用
+        serviceInstance = this
+        Log.d(TAG, "MediaRendererService实例已创建")
+    }
+
+    companion object {
+        private const val TAG = "MediaRendererService_Static"
+        
+        /** 应用上下文引用 */
+        private var appContext: Context? = null
+        
+        /** 媒体播放器管理器 */
+        private var mediaPlayerManager: MediaPlayerManager? = null
+        
+        /** 服务实例引用 */
+        private var serviceInstance: MediaRendererService? = null
+        
+        /**
+         * 初始化服务
+         * 
+         * 设置应用上下文并初始化媒体播放器
+         * 
+         * @param context 应用上下文
+         */
+        fun initialize(context: Context) {
+            appContext = context.applicationContext
+            Log.d(TAG, "MediaRendererService已初始化")
+        }
+        
+        /**
+         * 设置媒体播放器管理器
+         * 
+         * @param manager MediaPlayerManager实例
+         */
+        fun setMediaPlayerManager(manager: MediaPlayerManager) {
+            mediaPlayerManager = manager
+            initializePlayerListeners()
+            Log.d(TAG, "已设置MediaPlayerManager")
+        }
+        
+        /**
+         * 格式化时间为00:00:00格式
+         * 
+         * @param durationMs 毫秒时长
+         * @return 格式化后的时间字符串
+         */
+        fun formatTime(durationMs: Int): String {
+            val totalSeconds = durationMs / 1000
+            val hours = totalSeconds / 3600
+            val minutes = (totalSeconds % 3600) / 60
+            val seconds = totalSeconds % 60
+            return String.format("%02d:%02d:%02d", hours, minutes, seconds)
+        }
+        
+        /**
+         * 解析时间字符串
+         * 
+         * @param timeStr 时间字符串(HH:MM:SS格式)
+         * @return 时间总秒数
+         */
+        fun parseTimeString(timeStr: String): Int {
+            try {
+                val parts = timeStr.split(":")
+                if (parts.size == 3) {
+                    val hours = parts[0].toInt()
+                    val minutes = parts[1].toInt()
+                    val seconds = parts[2].toInt()
+                    return (hours * 3600 + minutes * 60 + seconds)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "解析时间字符串失败: $timeStr", e)
+            }
+            return 0
+        }
+        
+        /**
+         * 初始化播放器监听器
+         * 
+         * 设置媒体播放器状态变化监听器
+         */
+        private fun initializePlayerListeners() {
+            mediaPlayerManager?.setStateListener(object : MediaPlayerManager.MediaStateListener {
+                override fun onPrepared(durationMs: Int) {
+                    val formattedDuration = formatTime(durationMs)
+                    Log.d(TAG, "媒体准备完成，时长: $formattedDuration")
+                    
+                    // 使用Handler确保在主线程上更新
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            serviceInstance?.apply {
+                                currentMediaDuration = formattedDuration
+                                mediaDuration = formattedDuration
+                                currentTrackDuration = formattedDuration
+                            }
+                            Log.d(TAG, "更新媒体时长: $formattedDuration")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "更新媒体时长失败", e)
+                        }
+                    }
+                }
+
+                override fun onProgressUpdate(positionMs: Int) {
+                    // 这里可以处理进度更新
+                }
+
+                override fun onPlaybackStateChanged(state: MediaPlayerManager.PlaybackState) {
+                    // 使用Handler确保在主线程上更新
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            val transportState = when (state) {
+                                MediaPlayerManager.PlaybackState.PLAYING -> "PLAYING"
+                                MediaPlayerManager.PlaybackState.PAUSED -> "PAUSED_PLAYBACK"
+                                MediaPlayerManager.PlaybackState.STOPPED -> "STOPPED"
+                                MediaPlayerManager.PlaybackState.ERROR -> "STOPPED"
+                            }
+                            serviceInstance?.currentTransportState = transportState
+                            Log.d(TAG, "播放状态更新为: $transportState")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "更新播放状态失败", e)
+                        }
+                    }
+                }
+
+                override fun onPlaybackCompleted() {
+                    // 使用Handler确保在主线程上更新
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            serviceInstance?.currentTransportState = "STOPPED"
+                            Log.d(TAG, "播放完成，状态更新为停止")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "更新播放完成状态失败", e)
+                        }
+                    }
+                }
+
+                override fun onError(errorMsg: String) {
+                    Log.e(TAG, "播放错误: $errorMsg")
+                    // 使用Handler确保在主线程上更新
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            serviceInstance?.currentTransportState = "STOPPED"
+                            Log.d(TAG, "播放错误，状态更新为停止")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "更新错误状态失败", e)
+                        }
+                    }
+                }
+            })
+        }
+    }
 
     /**
-     * 实例ID状态变量
-     * 
-     * 在UPnP中用于标识特定的服务实例。默认值为0，不发送事件通知。
+     * 与输出参数对应的状态变量
      */
     @UpnpStateVariable(defaultValue = "0", sendEvents = false, name = "InstanceID")
     private var instanceId: UnsignedIntegerFourBytes? = null
 
-    /**
-     * 传输状态
-     * 
-     * 表示当前媒体的传输状态。可能的值包括：
-     * - STOPPED：已停止
-     * - PLAYING：正在播放
-     * - PAUSED_PLAYBACK：暂停播放
-     */
     @UpnpStateVariable(defaultValue = "STOPPED")
-    private var transportState: String = "STOPPED"
-
-    /**
-     * 当前播放模式
-     * 
-     * 表示当前的播放模式，默认为"1"（常规播放）
-     */
-    @UpnpStateVariable(defaultValue = "1")
-    private var currentPlayMode: String = "1"
-
-    /**
-     * 当前轨道
-     * 
-     * 表示当前正在播放的轨道号
-     */
+    private var currentTransportState: String = "STOPPED"
+    
     @UpnpStateVariable(defaultValue = "0")
     private var currentTrack: String = "0"
-
-    /**
-     * 当前轨道时长
-     * 
-     * 表示当前轨道的总时长，格式为"HH:MM:SS"
-     */
+    
     @UpnpStateVariable(defaultValue = "00:00:00")
     private var currentTrackDuration: String = "00:00:00"
-
-    /**
-     * 当前轨道元数据
-     * 
-     * 存储当前轨道的描述性信息
-     */
+    
     @UpnpStateVariable(defaultValue = "00:00:00")
-    private var currentTrackMetaData: String = "00:00:00"
-
-    /**
-     * 当前媒体时长
-     * 
-     * 表示当前媒体的总时长，格式为"HH:MM:SS"
-     */
+    private var mediaDuration: String = "00:00:00"
+    
     @UpnpStateVariable(defaultValue = "00:00:00")
     private var currentMediaDuration: String = "00:00:00"
-
-    /**
-     * 当前URI
-     * 
-     * 存储当前正在播放的媒体资源URI
-     */
+    
     @UpnpStateVariable(defaultValue = "")
     private var currentURI: String = ""
 
-    /**
-     * 当前URI元数据
-     * 
-     * 存储当前媒体资源的元数据
-     */
     @UpnpStateVariable(defaultValue = "")
     private var currentURIMetaData: String = ""
-
-    /**
-     * 下一轨道URI
-     * 
-     * 存储下一个将要播放的资源URI
-     */
-    @UpnpStateVariable(defaultValue = "0")
-    private var nextTrackURI: String = "0"
-
-    /**
-     * 下一轨道元数据
-     * 
-     * 存储下一个轨道的描述性信息
-     */
-    @UpnpStateVariable(defaultValue = "")
-    private var nextTrackMetaData: String = ""
-
-    /**
-     * 轨道总数
-     * 
-     * 当前播放列表中的轨道总数
-     */
-    @UpnpStateVariable(defaultValue = "0")
-    private var numberOfTracks: String = "0"
-
-    /**
-     * 播放速度
-     * 
-     * 当前媒体的播放速度，"1"表示正常速度
-     */
+    
     @UpnpStateVariable(defaultValue = "1")
     private var speed: String = "1"
+    
+    @UpnpStateVariable(defaultValue = "REL_TIME")
+    private var unit: String = "REL_TIME"
+    
+    @UpnpStateVariable(defaultValue = "00:00:00")
+    private var target: String = "00:00:00"
+    
+    @UpnpStateVariable(defaultValue = "00:00:00")
+    private var absTime: String = "00:00:00"
+    
+    @UpnpStateVariable(defaultValue = "00:00:00")
+    private var relTime: String = "00:00:00"
 
-    /**
-     * 跳转模式
-     * 
-     * 用于指定跳转操作的模式，"REL_TIME"表示相对时间
-     */
-    @UpnpStateVariable(defaultValue = "REL_TIME", name = "Unit")
-    private var seekMode: String = "REL_TIME"
-
-    /**
-     * 跳转目标
-     * 
-     * 跳转操作的目标位置，格式为"HH:MM:SS"
-     */
-    @UpnpStateVariable(defaultValue = "00:00:00", name = "Target")
-    private var seekTarget: String = "00:00:00"
-
-    /**
-     * 设置AV传输URI
-     * 
-     * 设置要播放的媒体资源URI及其元数据
-     * 
-     * @param instanceId 目标服务实例的ID
-     * @param uri 媒体资源的URI
-     * @param metadata 媒体资源的元数据
-     */
+    /** 设置AV传输URI */
     @UpnpAction
     fun setAVTransportURI(
-        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
-        @UpnpInputArgument(name = "CurrentURI") uri: String,
-        @UpnpInputArgument(name = "CurrentURIMetaData") metadata: String
+        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "CurrentURI") currentURI: String,
+        @UpnpInputArgument(name = "CurrentURIMetaData") currentURIMetaData: String
     ) {
-        this.currentURI = uri
-        this.currentURIMetaData = metadata
+        Log.d(TAG, "设置AV传输URI: $currentURI")
+        Log.d(TAG, "元数据: $currentURIMetaData")
+        
+        this.currentURI = currentURI
+        this.currentURIMetaData = currentURIMetaData
+        
+        // 清除之前的状态
+        this.mediaDuration = "00:00:00"
+        this.currentMediaDuration = "00:00:00"
+        this.currentTrackDuration = "00:00:00"
+        
+        try {
+            // 使用自动播放功能设置媒体URI
+            MediaRendererService.mediaPlayerManager?.setMediaURIAndPlay(currentURI)
+            Log.d(TAG, "已设置媒体URI并将自动播放")
+        } catch (e: Exception) {
+            Log.e(TAG, "设置媒体URI失败: ${e.message}", e)
+        }
     }
 
-    /**
-     * 播放媒体
-     * 
-     * 开始播放当前设置的媒体资源
-     * 
-     * @param instanceId 目标服务实例的ID
-     * @param speed 播放速度，"1"表示正常速度
-     */
+    /** 播放 */
     @UpnpAction
     fun play(
-        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes,
         @UpnpInputArgument(name = "Speed") speed: String
     ) {
+        Log.d(TAG, "播放命令接收，速度: $speed")
         this.speed = speed
-        this.transportState = "PLAYING"
+        MediaRendererService.mediaPlayerManager?.play()
     }
 
-    /**
-     * 暂停播放
-     * 
-     * 暂停当前正在播放的媒体
-     * 
-     * @param instanceId 目标服务实例的ID
-     */
+    /** 暂停 */
     @UpnpAction
     fun pause(
-        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes
+        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
     ) {
-        this.transportState = "PAUSED_PLAYBACK"
+        Log.d(TAG, "暂停命令接收")
+        MediaRendererService.mediaPlayerManager?.pause()
     }
 
-    /**
-     * 停止播放
-     * 
-     * 停止当前媒体的播放
-     * 
-     * @param instanceId 目标服务实例的ID
-     */
+    /** 停止 */
     @UpnpAction
     fun stop(
-        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes
+        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
     ) {
-        this.transportState = "STOPPED"
+        Log.d(TAG, "停止命令接收")
+        MediaRendererService.mediaPlayerManager?.stop()
     }
 
-    /**
-     * 媒体跳转
-     * 
-     * 将媒体播放位置跳转到指定时间点
-     * 
-     * @param instanceId 目标服务实例的ID
-     * @param unit 跳转单位，通常为"REL_TIME"（相对时间）
-     * @param target 目标时间点，格式为"HH:MM:SS"
-     */
+    /** 跳转到指定位置 */
     @UpnpAction
     fun seek(
-        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes,
         @UpnpInputArgument(name = "Unit") unit: String,
         @UpnpInputArgument(name = "Target") target: String
     ) {
-        this.seekMode = unit
-        this.seekTarget = target
+        Log.d(TAG, "跳转命令接收: $unit, $target")
+        this.unit = unit
+        this.target = target
+        
+        if (unit == "REL_TIME" || unit == "ABS_TIME") {
+            val seconds = MediaRendererService.parseTimeString(target)
+            MediaRendererService.mediaPlayerManager?.seekTo(seconds * 1000)
+        }
     }
 
-    /**
-     * 获取传输状态
-     * 
-     * @return 当前的传输状态（PLAYING、STOPPED、PAUSED_PLAYBACK等）
-     */
+    /** 获取传输信息 */
     @UpnpAction(out = [UpnpOutputArgument(name = "CurrentTransportState")])
-    fun getTransportState(): String {
-        return transportState
+    fun getTransportInfo(
+        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
+    ): String {
+        Log.d(TAG, "获取传输信息")
+        return currentTransportState
     }
 
-    /**
-     * 获取当前轨道
-     * 
-     * @return 当前正在播放的轨道号
-     */
-    @UpnpAction(out = [UpnpOutputArgument(name = "CurrentTrack")])
-    fun getCurrentTrack(): String {
-        return currentTrack
-    }
-
-    /**
-     * 获取当前轨道时长
-     * 
-     * @return 当前轨道的总时长
-     */
-    @UpnpAction(out = [UpnpOutputArgument(name = "CurrentTrackDuration")])
-    fun getCurrentTrackDuration(): String {
-        return currentTrackDuration
-    }
-
-    /**
-     * 获取当前媒体时长
-     * 
-     * @return 当前媒体的总时长
-     */
-    @UpnpAction(out = [UpnpOutputArgument(name = "CurrentMediaDuration")])
-    fun getCurrentMediaDuration(): String {
-        return currentMediaDuration
-    }
-
-    /**
-     * 获取当前URI
-     * 
-     * @return 当前正在播放的媒体资源URI
-     */
+    /** 获取媒体信息 */
     @UpnpAction(out = [UpnpOutputArgument(name = "CurrentURI")])
-    fun getCurrentURI(): String {
+    fun getMediaInfo(
+        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
+    ): String {
+        Log.d(TAG, "获取媒体信息")
         return currentURI
     }
 
-    /**
-     * 获取当前URI元数据
-     * 
-     * @return 当前媒体资源的元数据
-     */
-    @UpnpAction(out = [UpnpOutputArgument(name = "CurrentURIMetaData")])
-    fun getCurrentURIMetaData(): String {
-        return currentURIMetaData
-    }
-
-    /**
-     * 获取播放速度
-     * 
-     * @return 当前媒体的播放速度
-     */
-    @UpnpAction(out = [UpnpOutputArgument(name = "Speed")])
-    fun getSpeed(): String {
-        return speed
-    }
-
-    /**
-     * 获取跳转模式
-     * 
-     * @return 当前设置的跳转模式
-     */
-    @UpnpAction(out = [UpnpOutputArgument(name = "Unit")])
-    fun getSeekMode(): String {
-        return seekMode
-    }
-
-    /**
-     * 获取跳转目标
-     * 
-     * @return 最近一次跳转操作的目标时间点
-     */
-    @UpnpAction(out = [UpnpOutputArgument(name = "Target")])
-    fun getSeekTarget(): String {
-        return seekTarget
+    /** 获取位置信息 */
+    @UpnpAction(
+        out = [
+            UpnpOutputArgument(name = "AbsTime"),
+            UpnpOutputArgument(name = "RelTime"),
+            UpnpOutputArgument(name = "MediaDuration")
+        ]
+    )
+    fun getPositionInfo(
+        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
+    ): Array<String> {
+        val currentPosition = MediaRendererService.mediaPlayerManager?.getCurrentPosition() ?: 0
+        val formattedPosition = MediaRendererService.formatTime(currentPosition)
+        
+        this.absTime = formattedPosition
+        this.relTime = formattedPosition
+        
+        Log.d(TAG, "获取位置信息: $formattedPosition / $mediaDuration")
+        return arrayOf(absTime, relTime, mediaDuration)
     }
 } 

@@ -34,6 +34,7 @@ import java.util.UUID
  *
  * 该服务负责创建和注册UPnP设备，使Android设备成为DLNA渲染器。
  * 它管理设备的生命周期，提供前台服务通知，并处理与UPnP框架的交互。
+ * @author Max
  */
 class DLNAService : Service() {
     companion object {
@@ -42,64 +43,43 @@ class DLNAService : Service() {
         private const val NOTIFICATION_ID = 1
     }
 
-    /**
-     * UPnP服务引用
-     *
-     * 保存对Cling UPnP服务的引用，用于设备注册和管理
-     */
+    /** UPnP服务引用 */
     private var upnpService: AndroidUpnpService? = null
 
-    /**
-     * 本地Binder实例
-     *
-     * 提供给活动绑定到此服务的接口
-     */
+    /** 本地Binder实例 */
     private val binder = LocalBinder()
 
-    /**
-     * 设备唯一标识符
-     *
-     * UPnP设备的唯一标识，用于在网络上识别此设备
-     */
+    /** 设备唯一标识符 */
     private lateinit var udn: UDN
 
-    /**
-     * 服务连接对象
-     *
-     * 用于连接到AndroidUpnpService的连接对象
-     */
+    /** 服务连接对象 */
     private var serviceConnection: ServiceConnection? = null
 
-    /**
-     * 本地设备实例
-     *
-     * 表示本应用作为DLNA渲染器的UPnP设备实例
-     */
+    /** 本地设备实例 */
     private var localDevice: LocalDevice? = null
+    
+    /** 媒体播放器管理器 */
+    private lateinit var mediaPlayerManager: MediaPlayerManager
 
-    /**
-     * 本地Binder类
-     *
-     * 允许活动组件绑定到此服务并获取服务引用
-     */
+    /** 本地Binder类 */
     inner class LocalBinder : Binder() {
-        /**
-         * 获取服务实例
-         *
-         * @return DLNAService实例
-         */
+        /** 获取服务实例 */
         fun getService(): DLNAService = this@DLNAService
     }
 
-    /**
-     * 服务创建回调
-     *
-     * 初始化服务，创建通知通道，并启动前台服务。
-     * 生成唯一设备标识并绑定UPnP服务。
-     */
+    /** 服务创建回调 */
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "创建DLNA服务")
+        
+        // 创建媒体播放器管理器
+        mediaPlayerManager = MediaPlayerManager(this)
+        
+        // 将媒体播放器管理器设置到MediaRendererService中
+        MediaRendererService.setMediaPlayerManager(mediaPlayerManager)
+        
+        // 设置渲染控制服务的媒体播放器管理器
+        RenderingControlService.setMediaPlayerManager(mediaPlayerManager)
         
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
@@ -109,29 +89,14 @@ class DLNAService : Service() {
         
         // 绑定UPnP服务
         serviceConnection = object : ServiceConnection {
-            /**
-             * 服务连接成功回调
-             *
-             * 当成功绑定到AndroidUpnpService时调用。
-             * 保存服务引用并创建UPnP设备。
-             *
-             * @param name 服务的组件名称
-             * @param service 服务的IBinder接口
-             */
+            /** 服务连接成功回调 */
             override fun onServiceConnected(name: ComponentName, service: IBinder) {
                 upnpService = service as AndroidUpnpService
                 // 注册设备
                 createDevice()
             }
 
-            /**
-             * 服务断开连接回调
-             *
-             * 当与AndroidUpnpService的连接意外断开时调用。
-             * 清除服务引用。
-             *
-             * @param name 服务的组件名称
-             */
+            /** 服务断开连接回调 */
             override fun onServiceDisconnected(name: ComponentName) {
                 upnpService = null
             }
@@ -145,12 +110,7 @@ class DLNAService : Service() {
         )
     }
 
-    /**
-     * 创建通知通道
-     *
-     * 为Android 8.0及以上版本创建通知通道，
-     * 以便于前台服务通知的显示。
-     */
+    /** 创建通知通道 */
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -165,13 +125,7 @@ class DLNAService : Service() {
         }
     }
 
-    /**
-     * 创建通知
-     *
-     * 创建前台服务所需的通知，显示服务正在运行。
-     *
-     * @return 包含服务信息的Notification对象
-     */
+    /** 创建通知 */
     private fun createNotification(): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -187,19 +141,14 @@ class DLNAService : Service() {
             .build()
     }
 
-    /**
-     * 创建UPnP设备
-     *
-     * 创建并注册本设备作为DLNA渲染器，
-     * 包含媒体渲染服务和渲染控制服务。
-     */
+    /** 创建UPnP设备 */
     private fun createDevice() {
         try {
             val type = UDADeviceType("MediaRenderer", 1)
             val details = DeviceDetails(
-                "Android DLNA渲染器",
-                ManufacturerDetails("Android"),
-                ModelDetails("DLNA", "Android DLNA渲染器", "1.0")
+                "Max投屏器",  // 设备名称将显示在爱奇艺的设备列表中
+                ManufacturerDetails("Max投屏器"),
+                ModelDetails("DLNA播放器", "Android DLNA媒体渲染器", "1.0")
             )
 
             val identity = DeviceIdentity(udn)
@@ -230,31 +179,24 @@ class DLNAService : Service() {
 
             // 注册设备到UPnP网络
             upnpService?.registry?.addDevice(localDevice)
-            Log.d(TAG, "DLNA设备注册成功")
+            Log.d(TAG, "DLNA设备注册成功: ${details.friendlyName}")
         } catch (e: Exception) {
             Log.e(TAG, "注册DLNA设备失败", e)
         }
     }
 
-    /**
-     * 服务绑定回调
-     *
-     * 当活动组件绑定到此服务时调用。
-     * 
-     * @param intent 绑定意图
-     * @return IBinder接口，允许活动与服务通信
-     */
+    /** 服务绑定回调 */
     override fun onBind(intent: Intent): IBinder {
         return binder
     }
 
-    /**
-     * 服务销毁回调
-     *
-     * 当服务被销毁时清理资源，
-     * 解绑UPnP服务并关闭UPnP框架。
-     */
+    /** 服务销毁回调 */
     override fun onDestroy() {
+        // 释放媒体播放器资源
+        if (::mediaPlayerManager.isInitialized) {
+            mediaPlayerManager.releasePlayer()
+        }
+        
         serviceConnection?.let {
             applicationContext.unbindService(it)
         }
