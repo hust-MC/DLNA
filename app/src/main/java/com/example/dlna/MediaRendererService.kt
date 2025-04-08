@@ -12,6 +12,16 @@ import org.fourthline.cling.binding.annotations.UpnpServiceId
 import org.fourthline.cling.binding.annotations.UpnpServiceType
 import org.fourthline.cling.binding.annotations.UpnpStateVariable
 import org.fourthline.cling.model.types.UnsignedIntegerFourBytes
+import com.example.dlna.MediaPlayerManager
+import org.fourthline.cling.support.avtransport.lastchange.AVTransportVariable
+import org.fourthline.cling.support.lastchange.LastChange
+import org.fourthline.cling.support.model.MediaInfo
+import org.fourthline.cling.support.model.PositionInfo
+import org.fourthline.cling.support.model.TransportState
+import org.fourthline.cling.support.renderingcontrol.lastchange.ChannelMute
+import org.fourthline.cling.support.renderingcontrol.lastchange.ChannelVolume
+import org.fourthline.cling.support.renderingcontrol.lastchange.RenderingControlVariable
+import java.util.concurrent.TimeUnit
 
 /**
  * UPnP媒体渲染服务
@@ -24,50 +34,45 @@ import org.fourthline.cling.model.types.UnsignedIntegerFourBytes
     serviceId = UpnpServiceId("AVTransport"),
     serviceType = UpnpServiceType(value = "AVTransport", version = 1)
 )
-class MediaRendererService {
+class MediaRendererService(private val context: Context) {
     
     /** 日志标签 */
     private val TAG = "MediaRendererService"
     
+    /** 媒体播放器管理器 */
+    private var mediaPlayerManager: MediaPlayerManager? = null
+    
+    // 声明变量
+    private lateinit var avTransportLastChange: LastChange
+    
     init {
-        // 在初始化时保存实例引用
-        serviceInstance = this
+        // 初始化LastChange实例
+        avTransportLastChange = LastChange(org.fourthline.cling.support.avtransport.lastchange.AVTransportLastChangeParser())
         Log.d(TAG, "MediaRendererService实例已创建")
     }
 
     companion object {
         private const val TAG = "MediaRendererService_Static"
         
-        /** 应用上下文引用 */
-        private var appContext: Context? = null
-        
-        /** 媒体播放器管理器 */
+        /** 静态媒体播放器管理器 */
         private var mediaPlayerManager: MediaPlayerManager? = null
         
-        /** 服务实例引用 */
+        /** 服务实例 */
         private var serviceInstance: MediaRendererService? = null
         
         /**
-         * 初始化服务
-         * 
-         * 设置应用上下文并初始化媒体播放器
-         * 
-         * @param context 应用上下文
-         */
-        fun initialize(context: Context) {
-            appContext = context.applicationContext
-            Log.d(TAG, "MediaRendererService已初始化")
-        }
-        
-        /**
          * 设置媒体播放器管理器
-         * 
-         * @param manager MediaPlayerManager实例
          */
         fun setMediaPlayerManager(manager: MediaPlayerManager) {
             mediaPlayerManager = manager
-            initializePlayerListeners()
-            Log.d(TAG, "已设置MediaPlayerManager")
+            serviceInstance?.initializePlayerListeners()
+        }
+        
+        /**
+         * 初始化服务实例
+         */
+        fun initialize(context: Context) {
+            serviceInstance = MediaRendererService(context)
         }
         
         /**
@@ -104,88 +109,13 @@ class MediaRendererService {
             }
             return 0
         }
-        
-        /**
-         * 初始化播放器监听器
-         * 
-         * 设置媒体播放器状态变化监听器
-         */
-        private fun initializePlayerListeners() {
-            mediaPlayerManager?.setStateListener(object : MediaPlayerManager.MediaStateListener {
-                override fun onPrepared(durationMs: Int) {
-                    val formattedDuration = formatTime(durationMs)
-                    Log.d(TAG, "媒体准备完成，时长: $formattedDuration")
-                    
-                    // 使用Handler确保在主线程上更新
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            serviceInstance?.apply {
-                                currentMediaDuration = formattedDuration
-                                mediaDuration = formattedDuration
-                                currentTrackDuration = formattedDuration
-                            }
-                            Log.d(TAG, "更新媒体时长: $formattedDuration")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "更新媒体时长失败", e)
-                        }
-                    }
-                }
-
-                override fun onProgressUpdate(positionMs: Int) {
-                    // 这里可以处理进度更新
-                }
-
-                override fun onPlaybackStateChanged(state: MediaPlayerManager.PlaybackState) {
-                    // 使用Handler确保在主线程上更新
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            val transportState = when (state) {
-                                MediaPlayerManager.PlaybackState.PLAYING -> "PLAYING"
-                                MediaPlayerManager.PlaybackState.PAUSED -> "PAUSED_PLAYBACK"
-                                MediaPlayerManager.PlaybackState.STOPPED -> "STOPPED"
-                                MediaPlayerManager.PlaybackState.ERROR -> "STOPPED"
-                            }
-                            serviceInstance?.currentTransportState = transportState
-                            Log.d(TAG, "播放状态更新为: $transportState")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "更新播放状态失败", e)
-                        }
-                    }
-                }
-
-                override fun onPlaybackCompleted() {
-                    // 使用Handler确保在主线程上更新
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            serviceInstance?.currentTransportState = "STOPPED"
-                            Log.d(TAG, "播放完成，状态更新为停止")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "更新播放完成状态失败", e)
-                        }
-                    }
-                }
-
-                override fun onError(errorMsg: String) {
-                    Log.e(TAG, "播放错误: $errorMsg")
-                    // 使用Handler确保在主线程上更新
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            serviceInstance?.currentTransportState = "STOPPED"
-                            Log.d(TAG, "播放错误，状态更新为停止")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "更新错误状态失败", e)
-                        }
-                    }
-                }
-            })
-        }
     }
 
     /**
      * 与输出参数对应的状态变量
      */
     @UpnpStateVariable(defaultValue = "0", sendEvents = false, name = "InstanceID")
-    private var instanceId: UnsignedIntegerFourBytes? = null
+    private var instanceId: UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(0)
 
     @UpnpStateVariable(defaultValue = "STOPPED")
     private var currentTransportState: String = "STOPPED"
@@ -223,7 +153,16 @@ class MediaRendererService {
     @UpnpStateVariable(defaultValue = "00:00:00")
     private var relTime: String = "00:00:00"
 
-    /** 设置AV传输URI */
+    /** 当前媒体信息 */
+    private var mediaInfo: MediaInfo? = null
+    /** 当前位置信息 */
+    private var positionInfo: PositionInfo? = null
+    /** UI线程处理器 */
+    private val handler = Handler(Looper.getMainLooper())
+
+    /**
+     * 设置AV传输URI
+     */
     @UpnpAction
     fun setAVTransportURI(
         @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes,
@@ -333,5 +272,140 @@ class MediaRendererService {
         
         Log.d(TAG, "获取位置信息: $formattedPosition / $mediaDuration")
         return arrayOf(absTime, relTime, mediaDuration)
+    }
+
+    /**
+     * 更新媒体时长
+     */
+    fun updateMediaDuration(durationMs: Long) {
+        // 更新媒体持续时间
+        mediaDuration = durationMs.toString()
+        val formatted = MediaRendererService.formatTime(durationMs.toInt())
+        currentMediaDuration = formatted
+        currentTrackDuration = formatted
+        
+        // 发送持续时间变化通知
+        try {
+            val eventedValue = org.fourthline.cling.support.avtransport.lastchange.AVTransportVariable.CurrentTrackDuration(formatted)
+            avTransportLastChange.setEventedValue(
+                UnsignedIntegerFourBytes(0),
+                eventedValue
+            )
+            Log.d(TAG, "已更新媒体持续时间: $formatted")
+        } catch (e: Exception) {
+            Log.e(TAG, "更新媒体持续时间通知失败", e)
+        }
+    }
+    
+    /**
+     * 更新媒体播放位置
+     */
+    fun updateMediaPosition(positionMs: Long) {
+        // 更新当前播放位置
+        val formatted = MediaRendererService.formatTime(positionMs.toInt())
+        relTime = formatted
+        
+        try {
+            if (positionMs % 5000 < 1000) { // 仅在每5秒左右发送一次
+                val eventedValue = org.fourthline.cling.support.avtransport.lastchange.AVTransportVariable.RelativeTimePosition(formatted)
+                avTransportLastChange.setEventedValue(
+                    UnsignedIntegerFourBytes(0),
+                    eventedValue
+                )
+                Log.d(TAG, "已更新媒体位置: $formatted")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "更新媒体位置通知失败", e)
+        }
+    }
+    
+    /**
+     * 更新传输状态
+     */
+    fun updateTransportState(state: TransportState) {
+        // 更新播放状态
+        currentTransportState = state.value
+        
+        // 发送状态变化通知
+        try {
+            val eventedValue = org.fourthline.cling.support.avtransport.lastchange.AVTransportVariable.TransportState(state)
+            avTransportLastChange.setEventedValue(
+                UnsignedIntegerFourBytes(0),
+                eventedValue
+            )
+            Log.d(TAG, "已更新传输状态: ${state.value}")
+        } catch (e: Exception) {
+            Log.e(TAG, "更新传输状态通知失败", e)
+        }
+    }
+
+    /**
+     * 设置媒体播放器管理器
+     * 
+     * @param manager MediaPlayerManager实例
+     */
+    fun setMediaPlayerManager(manager: MediaPlayerManager) {
+        Log.d(TAG, "设置MediaPlayerManager")
+        mediaPlayerManager = manager
+        initializePlayerListeners()
+    }
+
+    /**
+     * 初始化播放器监听器
+     */
+    private fun initializePlayerListeners() {
+        MediaRendererService.mediaPlayerManager?.setStateListener(object : MediaPlayerManager.MediaStateListener {
+            override fun onPrepared(durationMs: Int) {
+                Log.d(TAG, "媒体准备完成，时长: $durationMs ms")
+                val durationFormatted = MediaRendererService.formatTime(durationMs)
+                
+                // 使用Handler确保在主线程更新
+                Handler(Looper.getMainLooper()).post {
+                    updateMediaDuration(durationMs.toLong())
+                }
+            }
+            
+            override fun onProgressUpdate(positionMs: Int) {
+                // 不需要日志记录每次进度更新
+                Handler(Looper.getMainLooper()).post {
+                    updateMediaPosition(positionMs.toLong())
+                }
+            }
+            
+            override fun onPlaybackStateChanged(state: MediaPlayerManager.PlaybackState) {
+                Log.d(TAG, "播放状态更新为: $state")
+                
+                // 使用Handler确保在主线程更新
+                Handler(Looper.getMainLooper()).post {
+                    when (state) {
+                        MediaPlayerManager.PlaybackState.PLAYING -> updateTransportState(TransportState.PLAYING)
+                        MediaPlayerManager.PlaybackState.PAUSED -> updateTransportState(TransportState.PAUSED_PLAYBACK)
+                        MediaPlayerManager.PlaybackState.STOPPED -> updateTransportState(TransportState.STOPPED)
+                        MediaPlayerManager.PlaybackState.ERROR -> {
+                            updateTransportState(TransportState.STOPPED)
+                            Log.e(TAG, "播放错误，状态更新为停止")
+                        }
+                    }
+                }
+            }
+            
+            override fun onPlaybackCompleted() {
+                Log.d(TAG, "播放完成")
+                
+                // 使用Handler确保在主线程更新
+                Handler(Looper.getMainLooper()).post {
+                    updateTransportState(TransportState.STOPPED)
+                }
+            }
+            
+            override fun onError(errorMsg: String) {
+                Log.e(TAG, "播放错误: $errorMsg")
+                
+                // 使用Handler确保在主线程更新
+                Handler(Looper.getMainLooper()).post {
+                    updateTransportState(TransportState.STOPPED)
+                }
+            }
+        })
     }
 } 

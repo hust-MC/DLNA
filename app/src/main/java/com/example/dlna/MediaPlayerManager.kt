@@ -8,46 +8,62 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.URL
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.TimeUnit
 
 /**
  * 媒体播放器管理类
- *
- * 该类负责实际控制媒体的播放、暂停、停止等操作，
- * 并提供媒体播放状态更新和回调功能。
+ * 控制媒体的播放、暂停、停止等操作，并提供状态更新回调
  * @author Max
  */
 class MediaPlayerManager(private val context: Context) {
     companion object {
         private const val TAG = "MediaPlayerManager"
+        
+        // User-Agent常量
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        
+        // 用于解决-38错误的HTTP客户端
+        private val okHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build()
+        }
     }
 
     /** 媒体播放器实例 */
     private var mediaPlayer: MediaPlayer? = null
-
     /** 播放状态监听器 */
     private var stateListener: MediaStateListener? = null
-
-    /** 是否在准备完成后自动播放 */
+    /** 是否自动播放 */
     private var shouldAutoPlay: Boolean = false
-
-    /** 播放器当前状态 */
+    /** 当前状态 */
     private var currentState = PlaybackState.STOPPED
-
-    /** 当前播放的媒体URI */
+    /** 当前URI */
     private var currentUri: String = ""
-
-    /** 当前媒体的总时长（毫秒） */
+    /** 当前媒体URI */
+    private var currentMediaUri: String? = null
+    /** 媒体总时长(毫秒) */
     private var duration: Int = 0
-
-    /** 播放进度定时器 */
+    /** 进度定时器 */
     private var progressTimer: Timer? = null
-
     /** UI更新处理器 */
     private val handler = Handler(Looper.getMainLooper())
+    /** 当前正在使用的缓存文件 */
+    private var currentCacheFile: File? = null
 
-    /** 播放状态枚举 */
+    /** 播放状态 */
     enum class PlaybackState {
         STOPPED,
         PLAYING,
@@ -57,26 +73,20 @@ class MediaPlayerManager(private val context: Context) {
 
     /** 媒体状态监听接口 */
     interface MediaStateListener {
-        /** 播放器准备完成回调 */
+        /** 准备完成 */
         fun onPrepared(durationMs: Int)
-
-        /** 播放进度更新回调 */
+        /** 进度更新 */
         fun onProgressUpdate(positionMs: Int)
-
-        /** 播放状态变化回调 */
+        /** 状态变化 */
         fun onPlaybackStateChanged(state: PlaybackState)
-
-        /** 播放完成回调 */
+        /** 播放完成 */
         fun onPlaybackCompleted()
-
-        /** 播放错误回调 */
+        /** 播放错误 */
         fun onError(errorMsg: String)
     }
 
     /**
-     * 设置播放状态监听器
-     *
-     * @param listener 实现了MediaStateListener接口的监听器对象
+     * 设置状态监听器
      */
     fun setStateListener(listener: MediaStateListener) {
         stateListener = listener
@@ -84,10 +94,6 @@ class MediaPlayerManager(private val context: Context) {
 
     /**
      * 设置媒体URI并自动播放
-     *
-     * 准备播放指定URI的媒体资源，并在准备完成后自动开始播放
-     *
-     * @param uri 媒体资源的URI
      */
     fun setMediaURIAndPlay(uri: String) {
         shouldAutoPlay = true
@@ -96,17 +102,14 @@ class MediaPlayerManager(private val context: Context) {
 
     /**
      * 设置媒体URI
-     *
-     * 准备播放指定URI的媒体资源
-     *
-     * @param uri 媒体资源的URI
      */
     fun setMediaURI(uri: String) {
         try {
             // 释放现有播放器资源
-            releasePlayer()
+            release()
             
             currentUri = uri
+            currentMediaUri = uri
             Log.d(TAG, "准备设置媒体URI: $uri")
             
             // 处理URI，特别是爱奇艺的复杂URI
@@ -117,11 +120,12 @@ class MediaPlayerManager(private val context: Context) {
             mediaPlayer = MediaPlayer().apply {
                 // 避免使用已过时的方法
                 try {
-                    javaClass.getMethod("setAudioAttributes", android.media.AudioAttributes::class.java)
-                        .invoke(this, android.media.AudioAttributes.Builder()
-                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE)
-                            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                            .build())
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .build()
+                    )
                     Log.d(TAG, "使用新的AudioAttributes API")
                 } catch (e: Exception) {
                     // 如果新API不可用，使用旧的方法
@@ -130,7 +134,10 @@ class MediaPlayerManager(private val context: Context) {
                     Log.d(TAG, "使用旧的setAudioStreamType API")
                 }
                 
-                // 设置监听器
+                // 设置错误监听器
+                setPlayerErrorListener(this)
+                
+                // 设置其他监听器
                 setOnPreparedListener { mp ->
                     Log.d(TAG, "媒体准备完成")
                     this@MediaPlayerManager.duration = mp.duration
@@ -166,73 +173,34 @@ class MediaPlayerManager(private val context: Context) {
                     stateListener?.onPlaybackStateChanged(currentState)
                 }
                 
-                setOnErrorListener { _, what, extra ->
-                    val errorMsg = when (what) {
-                        MediaPlayer.MEDIA_ERROR_UNKNOWN -> "未知错误"
-                        MediaPlayer.MEDIA_ERROR_SERVER_DIED -> "服务器错误"
-                        MediaPlayer.MEDIA_ERROR_IO -> "IO错误"
-                        MediaPlayer.MEDIA_ERROR_MALFORMED -> "格式错误"
-                        MediaPlayer.MEDIA_ERROR_UNSUPPORTED -> "不支持的格式"
-                        MediaPlayer.MEDIA_ERROR_TIMED_OUT -> "超时"
-                        -38 -> "解码错误-38，可能是格式不支持"
-                        else -> "错误: $what"
-                    }
-                    
-                    val extraInfo = when (extra) {
-                        MediaPlayer.MEDIA_ERROR_TIMED_OUT -> "超时"
-                        MediaPlayer.MEDIA_ERROR_IO -> "IO错误"
-                        MediaPlayer.MEDIA_ERROR_MALFORMED -> "格式错误"
-                        MediaPlayer.MEDIA_ERROR_UNSUPPORTED -> "不支持的格式"
-                        else -> "附加信息: $extra"
-                    }
-                    
-                    Log.e(TAG, "媒体播放错误: $errorMsg, $extraInfo (URI: ${currentUri.take(100)}...)")
-                    currentState = PlaybackState.ERROR
-                    stateListener?.onError("播放错误: $errorMsg ($extraInfo)")
-                    stateListener?.onPlaybackStateChanged(currentState)
-                    true
-                }
-                
-                // 设置数据源需要有重试机制
-                var retryCount = 0
-                val maxRetries = 3
-                
-                while (retryCount < maxRetries) {
-                    try {
-                        val headers = HashMap<String, String>()
-                        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                        headers["Range"] = "bytes=0-"
-                        headers["Connection"] = "keep-alive"
-                        headers["Accept"] = "*/*"
-                        
-                        // 尝试使用headers设置数据源
-                        try {
-                            val property = MediaPlayer::class.java.getMethod("setDataSource", 
-                                String::class.java,
-                                java.util.Map::class.java)
-                            property.invoke(this, processedUri, headers)
-                            Log.d(TAG, "使用headers设置数据源成功")
-                            break
-                        } catch (e: Exception) {
-                            Log.w(TAG, "使用headers设置数据源失败，尝试直接设置: ${e.message}")
-                            setDataSource(processedUri)
-                            Log.d(TAG, "直接设置数据源成功")
-                            break
-                        }
-                    } catch (e: Exception) {
-                        retryCount++
-                        Log.e(TAG, "设置数据源失败 (尝试 $retryCount/$maxRetries): ${e.message}")
-                        if (retryCount >= maxRetries) {
-                            throw e // 重试次数用完，抛出异常
-                        }
-                        // 短暂等待后重试
-                        Thread.sleep(500)
-                    }
-                }
-                
                 setOnInfoListener { _, what, _ ->
                     Log.d(TAG, "媒体信息事件: $what")
                     true
+                }
+                
+                try {
+                    if (processedUri.startsWith("file://")) {
+                        // 本地文件（可能是我们自己缓存的文件）
+                        Log.d(TAG, "使用本地文件: $processedUri")
+                        setDataSource(processedUri)
+                    } else if (processedUri.startsWith("http")) {
+                        // 网络文件，添加代理头
+                        Log.d(TAG, "使用网络URI: $processedUri")
+                        val headers = HashMap<String, String>()
+                        headers["User-Agent"] = USER_AGENT
+                        headers["Connection"] = "keep-alive"
+                        headers["Accept"] = "*/*"
+                        
+                        setDataSource(context, Uri.parse(processedUri), headers)
+                    } else {
+                        // 其他类型的URI，直接设置
+                        Log.d(TAG, "使用其他类型URI: $processedUri")
+                        setDataSource(processedUri)
+                    }
+                    Log.d(TAG, "设置数据源成功")
+                } catch (e: Exception) {
+                    Log.e(TAG, "设置数据源失败: ${e.message}", e)
+                    throw e
                 }
                 
                 Log.d(TAG, "开始异步准备媒体播放器")
@@ -247,267 +215,362 @@ class MediaPlayerManager(private val context: Context) {
     }
     
     /**
-     * 处理URI
-     *
-     * 处理不同来源的媒体URI，确保它们能正确播放
-     *
-     * @param uri 原始URI
-     * @return 处理后的URI
+     * 尝试使用HTTP代理方法解决-38错误
+     */
+    private fun tryWithHttpProxy(uri: String) {
+        // 先通知用户正在尝试代替方案
+        handler.post {
+            stateListener?.onError("检测到格式问题，正在尝试替代播放方案...")
+        }
+        
+        Thread {
+            try {
+                Log.d(TAG, "开始HTTP代理尝试: $uri")
+                
+                // 检查是否为m3u8文件
+                if (!uri.lowercase().contains(".m3u8")) {
+                    Log.d(TAG, "不是m3u8文件，尝试直接下载媒体文件")
+                    // 对非m3u8文件，尝试直接下载
+                    val cacheFile = File(context.cacheDir, "temp_media_${System.currentTimeMillis()}.mp4")
+                    downloadMediaFile(uri, cacheFile)
+                    currentCacheFile = cacheFile
+                    
+                    // 使用本地文件URI重新设置媒体
+                    val fileUri = "file://${cacheFile.absolutePath}"
+                    Log.d(TAG, "使用本地缓存文件: $fileUri")
+                    
+                    handler.post {
+                        setMediaURI(fileUri)
+                    }
+                    return@Thread
+                }
+                
+                // 创建请求获取m3u8内容
+                val request = Request.Builder()
+                    .url(uri)
+                    .addHeader("User-Agent", USER_AGENT)
+                    .build()
+                
+                val response = okHttpClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    throw IOException("M3U8请求失败: ${response.code}")
+                }
+                
+                val m3u8Content = response.body?.string() ?: throw IOException("M3U8内容为空")
+                Log.d(TAG, "获取到M3U8内容: ${m3u8Content.take(100)}...")
+                
+                // 解析M3U8获取TS文件列表
+                val tsFiles = extractTsUrls(m3u8Content, uri)
+                if (tsFiles.isEmpty()) {
+                    throw IOException("M3U8文件中没有找到TS文件")
+                }
+                
+                Log.d(TAG, "解析到${tsFiles.size}个TS文件，第一个: ${tsFiles.first()}")
+                
+                // 下载第一个TS文件
+                val cacheFile = File(context.cacheDir, "temp_media_${System.currentTimeMillis()}.ts")
+                downloadMediaFile(tsFiles.first(), cacheFile)
+                currentCacheFile = cacheFile
+                
+                // 使用本地文件URI重新设置媒体
+                val fileUri = "file://${cacheFile.absolutePath}"
+                Log.d(TAG, "使用本地缓存文件: $fileUri")
+                
+                handler.post {
+                    setMediaURI(fileUri)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "HTTP代理尝试失败", e)
+                handler.post {
+                    stateListener?.onError("替代播放方案失败: ${e.message}")
+                    currentState = PlaybackState.ERROR
+                    stateListener?.onPlaybackStateChanged(currentState)
+                }
+            }
+        }.start()
+    }
+    
+    /**
+     * 下载媒体文件
+     */
+    private fun downloadMediaFile(url: String, outputFile: File) {
+        Log.d(TAG, "开始下载媒体文件: $url 到 ${outputFile.absolutePath}")
+        
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("User-Agent", USER_AGENT)
+            .build()
+        
+        val response = okHttpClient.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw IOException("下载请求失败: ${response.code}")
+        }
+        
+        response.body?.byteStream()?.use { input ->
+            FileOutputStream(outputFile).use { output ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                var totalBytesRead = 0L
+                
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    output.write(buffer, 0, bytesRead)
+                    totalBytesRead += bytesRead
+                }
+                
+                Log.d(TAG, "下载完成，总字节数: $totalBytesRead")
+            }
+        } ?: throw IOException("响应体为空")
+    }
+    
+    /**
+     * 从M3U8内容中提取TS文件URL
+     */
+    private fun extractTsUrls(m3u8Content: String, baseUrl: String): List<String> {
+        val lines = m3u8Content.lines()
+        val tsUrls = mutableListOf<String>()
+        val baseUri = try {
+            URL(baseUrl)
+        } catch (e: Exception) {
+            URL("http://example.com")
+        }
+        
+        for (line in lines) {
+            val trimmedLine = line.trim()
+            if (trimmedLine.isNotEmpty() && !trimmedLine.startsWith("#")) {
+                val tsUrl = if (trimmedLine.startsWith("http")) {
+                    trimmedLine
+                } else if (trimmedLine.startsWith("/")) {
+                    "${baseUri.protocol}://${baseUri.host}${trimmedLine}"
+                } else {
+                    val baseUrlPath = baseUrl.substringBeforeLast("/", "")
+                    "$baseUrlPath/$trimmedLine"
+                }
+                tsUrls.add(tsUrl)
+            }
+        }
+        
+        return tsUrls
+    }
+    
+    /**
+     * 处理URI，解决特殊格式问题
      */
     private fun processUri(uri: String): String {
-        Log.d(TAG, "处理URI: ${uri.take(100)}...")
-        
-        // 处理空URI
-        if (uri.isBlank()) {
-            Log.e(TAG, "URI为空")
-            throw IllegalArgumentException("URI不能为空")
-        }
-        
-        // 爱奇艺链接特殊处理
-        if (uri.contains("iqiyi.com") || uri.contains("iqiy") || uri.contains("qiyi.com")) {
-            var processedUri = uri
-            
-            // 1. 移除查询参数以简化URL（这些参数可能导致-38错误）
-            if (uri.contains("?")) {
-                processedUri = uri.substring(0, uri.indexOf("?"))
-                Log.d(TAG, "已移除爱奇艺URI查询参数: $processedUri")
-            }
-            
-            // 2. 特殊处理爱奇艺的加密参数
-            if (processedUri.contains("/dash?")) {
-                processedUri = processedUri.replace("/dash?", "/dash_simple?")
-                Log.d(TAG, "处理爱奇艺dash链接: $processedUri")
-            }
-            
-            // 3. 转换为HTTP协议（如果是HTTPS）
-            if (processedUri.startsWith("https://")) {
-                processedUri = processedUri.replace("https://", "http://")
-                Log.d(TAG, "将爱奇艺URI转换为HTTP: $processedUri")
-            }
-            
-            return processedUri
-        }
-        
-        // 处理其他常见视频站点
-        if (uri.contains("youku") || uri.contains("qq.com") || uri.contains("bilibili")) {
-            val baseUri = if (uri.contains("?")) {
-                uri.substring(0, uri.indexOf("?"))
-            } else {
-                uri
-            }
-            Log.d(TAG, "已处理视频URI: $baseUri")
-            return baseUri
-        }
-        
-        // 如果URI中包含特殊字符，进行URL编码
-        if (uri.contains(" ") || uri.contains("#") || uri.contains("%")) {
-            try {
-                val encodedUri = java.net.URLEncoder.encode(uri, "UTF-8")
-                    .replace("+", "%20") // 替换空格为%20而不是+
-                Log.d(TAG, "URL编码后的URI: $encodedUri")
-                return encodedUri
-            } catch (e: Exception) {
-                Log.e(TAG, "URI编码失败", e)
-                // 如果编码失败，尝试简单替换
-                val simpleEncodedUri = uri.replace(" ", "%20")
-                    .replace("#", "%23")
-                Log.d(TAG, "简单替换后的URI: $simpleEncodedUri")
-                return simpleEncodedUri
-            }
-        }
-        
-        // 如果是HTTP URI，确保它以http://或https://开头
-        if (uri.contains("://")) {
-            if (!uri.startsWith("http://") && !uri.startsWith("https://") && 
-                !uri.startsWith("rtsp://") && !uri.startsWith("content://")) {
-                Log.d(TAG, "URI没有有效的协议头，添加https://")
-                return "https://$uri"
-            }
-        }
-        
-        // 如果是本地文件，确保使用file://
-        if (uri.startsWith("/") && !uri.startsWith("file://")) {
-            Log.d(TAG, "添加file://前缀到本地文件URI")
-            return "file://$uri"
-        }
-        
+        // 简单的URI处理，返回原始URI
         return uri
     }
     
     /**
+     * 设置播放器错误监听器
+     */
+    private fun setPlayerErrorListener(player: MediaPlayer) {
+        player.setOnErrorListener { _, what, extra ->
+            Log.e(TAG, "播放器错误: what=$what, extra=$extra")
+            
+            // 处理特定错误
+            when (what) {
+                MediaPlayer.MEDIA_ERROR_UNKNOWN -> {
+                    if (extra == -38) {
+                        // 对于-38错误，尝试使用HTTP代理方法
+                        Log.d(TAG, "检测到-38错误，尝试使用HTTP代理方法")
+                        tryWithHttpProxy(currentUri)
+                        return@setOnErrorListener true
+                    }
+                }
+            }
+            
+            // 通知错误
+            currentState = PlaybackState.ERROR
+            stateListener?.onError("播放器错误: $what, $extra")
+            stateListener?.onPlaybackStateChanged(currentState)
+            
+            true // 返回true表示我们已处理错误
+        }
+    }
+    
+    /**
      * 开始播放
-     *
-     * 开始或继续播放当前设置的媒体
      */
     fun play() {
-        Log.d(TAG, "尝试开始播放，当前状态: $currentState")
-        mediaPlayer?.let {
-            try {
-                // 检查播放器状态，如果是错误状态，尝试重新准备
-                if (currentState == PlaybackState.ERROR) {
-                    Log.d(TAG, "播放器处于错误状态，尝试重新初始化")
-                    setMediaURI(currentUri)
-                    return
-                }
-                
+        try {
+            mediaPlayer?.let {
                 it.start()
                 currentState = PlaybackState.PLAYING
                 stateListener?.onPlaybackStateChanged(currentState)
                 startProgressUpdates()
-            } catch (e: Exception) {
-                Log.e(TAG, "播放失败: ${e.message}", e)
-                currentState = PlaybackState.ERROR
-                stateListener?.onError("播放失败: ${e.message}")
-                stateListener?.onPlaybackStateChanged(currentState)
+                Log.d(TAG, "开始播放")
+            } ?: run {
+                Log.e(TAG, "播放失败: MediaPlayer为null")
+                stateListener?.onError("播放失败: 播放器未初始化")
             }
-        } ?: run {
-            Log.e(TAG, "播放器未初始化")
-            stateListener?.onError("播放器未初始化")
+        } catch (e: Exception) {
+            Log.e(TAG, "播放异常", e)
+            currentState = PlaybackState.ERROR
+            stateListener?.onError("播放异常: ${e.message}")
+            stateListener?.onPlaybackStateChanged(currentState)
         }
     }
-
+    
     /**
      * 暂停播放
-     *
-     * 暂停当前正在播放的媒体
      */
     fun pause() {
-        mediaPlayer?.let {
-            if (it.isPlaying) {
-                it.pause()
-                currentState = PlaybackState.PAUSED
-                stateListener?.onPlaybackStateChanged(currentState)
-                stopProgressUpdates()
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) {
+                    it.pause()
+                    currentState = PlaybackState.PAUSED
+                    stateListener?.onPlaybackStateChanged(currentState)
+                    stopProgressUpdates()
+                    Log.d(TAG, "暂停播放")
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "暂停异常", e)
+            stateListener?.onError("暂停异常: ${e.message}")
         }
     }
-
+    
     /**
      * 停止播放
-     *
-     * 停止当前媒体的播放并释放资源
      */
     fun stop() {
-        stopProgressUpdates()
-        mediaPlayer?.let {
-            try {
+        try {
+            mediaPlayer?.let {
                 if (it.isPlaying) {
                     it.stop()
                 }
                 it.reset()
                 currentState = PlaybackState.STOPPED
                 stateListener?.onPlaybackStateChanged(currentState)
-            } catch (e: Exception) {
-                Log.e(TAG, "停止播放失败", e)
+                stopProgressUpdates()
+                Log.d(TAG, "停止播放")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "停止异常", e)
+            stateListener?.onError("停止异常: ${e.message}")
         }
     }
-
-    /**
-     * 跳转到指定位置
-     *
-     * @param positionMs 目标位置（毫秒）
-     */
-    fun seekTo(positionMs: Int) {
-        mediaPlayer?.let {
-            try {
-                it.seekTo(positionMs)
-            } catch (e: Exception) {
-                Log.e(TAG, "跳转失败", e)
-                stateListener?.onError("跳转失败: ${e.message}")
-            }
-        }
-    }
-
-    /**
-     * 获取当前播放位置
-     *
-     * @return 当前播放位置（毫秒）
-     */
-    fun getCurrentPosition(): Int {
-        return mediaPlayer?.currentPosition ?: 0
-    }
-
-    /**
-     * 获取媒体总时长
-     *
-     * @return 媒体总时长（毫秒）
-     */
-    fun getDuration(): Int {
-        return duration
-    }
-
-    /**
-     * 获取当前播放状态
-     *
-     * @return 当前的PlaybackState枚举值
-     */
-    fun getCurrentState(): PlaybackState {
-        return currentState
-    }
-
-    /**
-     * 设置音量
-     *
-     * @param volume 音量值（0.0到1.0）
-     */
-    fun setVolume(volume: Float) {
-        val normalizedVolume = volume.coerceIn(0f, 1f)
-        mediaPlayer?.setVolume(normalizedVolume, normalizedVolume)
-    }
-
-    /**
-     * 开始进度更新
-     *
-     * 启动定时器以定期更新播放进度
-     */
-    private fun startProgressUpdates() {
-        progressTimer?.cancel()
-        progressTimer = Timer().apply {
-            scheduleAtFixedRate(object : TimerTask() {
-                override fun run() {
-                    mediaPlayer?.let {
-                        if (it.isPlaying) {
-                            val position = it.currentPosition
-                            handler.post {
-                                stateListener?.onProgressUpdate(position)
-                            }
-                        }
-                    }
-                }
-            }, 0, 1000) // 每秒更新一次
-        }
-    }
-
-    /**
-     * 停止进度更新
-     *
-     * 取消进度更新定时器
-     */
-    private fun stopProgressUpdates() {
-        progressTimer?.cancel()
-        progressTimer = null
-    }
-
+    
     /**
      * 释放播放器资源
-     *
-     * 停止播放并释放媒体播放器资源
      */
-    fun releasePlayer() {
-        stopProgressUpdates()
-        mediaPlayer?.let {
-            try {
+    fun release() {
+        try {
+            mediaPlayer?.let {
                 if (it.isPlaying) {
                     it.stop()
                 }
                 it.reset()
                 it.release()
-            } catch (e: Exception) {
-                Log.e(TAG, "释放播放器资源失败", e)
+                mediaPlayer = null
+                currentState = PlaybackState.STOPPED
+                stateListener?.onPlaybackStateChanged(currentState)
+                stopProgressUpdates()
+                Log.d(TAG, "释放播放器资源")
             }
+            
+            // 清理缓存文件
+            currentCacheFile?.let {
+                if (it.exists()) {
+                    it.delete()
+                    Log.d(TAG, "删除缓存文件: ${it.absolutePath}")
+                }
+                currentCacheFile = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "释放资源异常", e)
         }
-        mediaPlayer = null
-        currentState = PlaybackState.STOPPED
+    }
+    
+    /**
+     * 跳转到指定位置
+     */
+    fun seekTo(position: Int) {
+        try {
+            mediaPlayer?.let {
+                // 确保位置在有效范围内
+                val validPosition = when {
+                    position < 0 -> 0
+                    position > duration -> duration
+                    else -> position
+                }
+                
+                it.seekTo(validPosition)
+                Log.d(TAG, "跳转到: $validPosition ms")
+                stateListener?.onProgressUpdate(validPosition)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "跳转异常", e)
+            stateListener?.onError("跳转异常: ${e.message}")
+        }
+    }
+    
+    /**
+     * 获取当前播放位置
+     */
+    fun getCurrentPosition(): Int {
+        return try {
+            mediaPlayer?.currentPosition ?: 0
+        } catch (e: Exception) {
+            Log.e(TAG, "获取当前位置异常", e)
+            0
+        }
+    }
+    
+    /**
+     * 获取媒体时长
+     */
+    fun getDuration(): Int {
+        return duration
+    }
+    
+    /**
+     * 获取当前播放状态
+     */
+    fun getState(): PlaybackState {
+        return currentState
+    }
+    
+    /**
+     * 是否正在播放
+     */
+    fun isPlaying(): Boolean {
+        return try {
+            mediaPlayer?.isPlaying ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * 开始进度更新
+     */
+    private fun startProgressUpdates() {
+        stopProgressUpdates() // 确保先停止现有定时器
+        
+        progressTimer = Timer().apply {
+            scheduleAtFixedRate(object : TimerTask() {
+                override fun run() {
+                    try {
+                        val position = getCurrentPosition()
+                        handler.post {
+                            stateListener?.onProgressUpdate(position)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "进度更新异常", e)
+                        cancel()
+                    }
+                }
+            }, 0, 1000) // 每秒更新一次
+        }
+    }
+    
+    /**
+     * 停止进度更新
+     */
+    private fun stopProgressUpdates() {
+        progressTimer?.cancel()
+        progressTimer = null
     }
 }
