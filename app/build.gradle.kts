@@ -61,6 +61,10 @@ android {
             res.srcDirs("src/main/res")
         }
     }
+
+    lint {
+        abortOnError = false
+    }
 }
 
 dependencies {

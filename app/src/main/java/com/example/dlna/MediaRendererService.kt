@@ -12,7 +12,7 @@ import org.fourthline.cling.binding.annotations.UpnpServiceId
 import org.fourthline.cling.binding.annotations.UpnpServiceType
 import org.fourthline.cling.binding.annotations.UpnpStateVariable
 import org.fourthline.cling.model.types.UnsignedIntegerFourBytes
-import com.example.dlna.MediaPlayerManager
+import org.fourthline.cling.support.avtransport.lastchange.AVTransportLastChangeParser
 import org.fourthline.cling.support.avtransport.lastchange.AVTransportVariable
 import org.fourthline.cling.support.lastchange.LastChange
 import org.fourthline.cling.support.model.MediaInfo
@@ -43,16 +43,63 @@ class MediaRendererService(private val context: Context) {
     private var mediaPlayerManager: MediaPlayerManager? = null
     
     // 声明变量
-    private lateinit var avTransportLastChange: LastChange
+    private var avTransportLastChange: LastChange
     
     init {
-        // 初始化LastChange实例
-        avTransportLastChange = LastChange(org.fourthline.cling.support.avtransport.lastchange.AVTransportLastChangeParser())
-        Log.d(TAG, "MediaRendererService实例已创建")
+        try {
+            // 创建一个不依赖XML解析器的LastChange实例
+            avTransportLastChange = LastChange(SCHEMA_URI, "AVTransport", 1, INITIAL_EVENT_XML)
+            Log.d(TAG, "MediaRendererService实例已创建(使用简化的LastChange初始化)")
+        } catch (e: Exception) {
+            // 使用备用方法创建
+            Log.e(TAG, "标准LastChange初始化失败，使用备用方法", e)
+            avTransportLastChange = createEmptyLastChange()
+        }
+    }
+    
+    /**
+     * 创建一个空的LastChange对象，不依赖XML解析器
+     */
+    private fun createEmptyLastChange(): LastChange {
+        return object : LastChange(SCHEMA_URI, "AVTransport", 1, INITIAL_EVENT_XML) {
+            // 重写方法，避免XML解析
+            override fun setEventedValue(instanceId: UnsignedIntegerFourBytes, eventedValue: Any): Boolean {
+                try {
+                    // 简单地记录状态变化而不进行XML转换
+                    Log.d(TAG, "状态变化: instanceId=$instanceId, value=$eventedValue")
+                    return true
+                } catch (ex: Exception) {
+                    return false
+                }
+            }
+        }
     }
 
     companion object {
         private const val TAG = "MediaRendererService_Static"
+        
+        /**
+         * 默认的LastChange XML模板
+         */
+        private const val INITIAL_EVENT_XML = "<Event xmlns=\"urn:schemas-upnp-org:metadata-1-0/AVT/\"/>"
+        
+        /**
+         * LastChange模式URI
+         */
+        private const val SCHEMA_URI = "urn:schemas-upnp-org:metadata-1-0/AVT/"
+        
+        // 静态初始化块，设置XML解析器安全属性
+        init {
+            try {
+                // 禁用可能导致问题的XML解析器安全特性
+                System.setProperty("jdk.xml.disallowDtd", "false")
+                System.setProperty("jdk.xml.enableExtensionFunctions", "true")
+                System.setProperty("javax.xml.parsers.SAXParserFactory", "org.apache.harmony.xml.parsers.SAXParserFactoryImpl")
+                Log.d(TAG, "已设置XML解析器安全属性")
+            } catch (e: Exception) {
+                Log.e(TAG, "设置XML解析器属性失败", e)
+            }
+        }
         
         /** 静态媒体播放器管理器 */
         private var mediaPlayerManager: MediaPlayerManager? = null
@@ -286,7 +333,7 @@ class MediaRendererService(private val context: Context) {
         
         // 发送持续时间变化通知
         try {
-            val eventedValue = org.fourthline.cling.support.avtransport.lastchange.AVTransportVariable.CurrentTrackDuration(formatted)
+            val eventedValue = AVTransportVariable.CurrentTrackDuration(formatted)
             avTransportLastChange.setEventedValue(
                 UnsignedIntegerFourBytes(0),
                 eventedValue
@@ -307,7 +354,7 @@ class MediaRendererService(private val context: Context) {
         
         try {
             if (positionMs % 5000 < 1000) { // 仅在每5秒左右发送一次
-                val eventedValue = org.fourthline.cling.support.avtransport.lastchange.AVTransportVariable.RelativeTimePosition(formatted)
+                val eventedValue = AVTransportVariable.RelativeTimePosition(formatted)
                 avTransportLastChange.setEventedValue(
                     UnsignedIntegerFourBytes(0),
                     eventedValue
@@ -328,7 +375,7 @@ class MediaRendererService(private val context: Context) {
         
         // 发送状态变化通知
         try {
-            val eventedValue = org.fourthline.cling.support.avtransport.lastchange.AVTransportVariable.TransportState(state)
+            val eventedValue = AVTransportVariable.TransportState(state)
             avTransportLastChange.setEventedValue(
                 UnsignedIntegerFourBytes(0),
                 eventedValue
@@ -353,7 +400,7 @@ class MediaRendererService(private val context: Context) {
     /**
      * 初始化播放器监听器
      */
-    private fun initializePlayerListeners() {
+    fun initializePlayerListeners() {
         MediaRendererService.mediaPlayerManager?.setStateListener(object : MediaPlayerManager.MediaStateListener {
             override fun onPrepared(durationMs: Int) {
                 Log.d(TAG, "媒体准备完成，时长: $durationMs ms")

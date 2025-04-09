@@ -7,8 +7,10 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import android.widget.Button
 import android.widget.TextView
+import com.example.dlna.util.SecurityAwareSAXParser
 
 /**
  * 主活动界面
@@ -97,6 +99,11 @@ class MainActivity : Activity() {
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 初始化安全XML解析器设置
+        SecurityAwareSAXParser.newSecureFactory()
+        Log.d(TAG, "已初始化安全XML解析器设置")
+        
         setContentView(R.layout.activity_main)
 
         statusText = findViewById(R.id.status_text)
@@ -113,25 +120,20 @@ class MainActivity : Activity() {
 
     /**
      * 启动DLNA服务
-     * 
-     * 创建一个Intent并绑定到DLNA服务
      */
     private fun startDLNAService() {
+        Log.d(TAG, "启动DLNA服务")
         val intent = Intent(this, DLNAService::class.java)
         bindService(intent, connection, Context.BIND_AUTO_CREATE)
     }
 
     /**
      * 停止DLNA服务
-     * 
-     * 如果当前已绑定服务，则解绑服务并更新UI
      */
     private fun stopDLNAService() {
-        if (bound) {
-            unbindService(connection)
-            bound = false
-            updateUI()
-        }
+        Log.d(TAG, "停止DLNA服务")
+        val serviceIntent = Intent(this, DLNAService::class.java)
+        stopService(serviceIntent)
     }
 
     /**
