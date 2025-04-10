@@ -9,5 +9,16 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">iqiyi.com</domain>
+        <domain includeSubdomains="true">qiyi.com</domain>
+        <domain includeSubdomains="true">pps.tv</domain>
+        <domain includeSubdomains="true">iqiyipic.com</domain>
+        <domain includeSubdomains="true">71.am</domain>
+        <!-- 其他常见视频流媒体域名 -->
+        <domain includeSubdomains="true">youku.com</domain>
+        <domain includeSubdomains="true">tudou.com</domain>
+        <domain includeSubdomains="true">mgtv.com</domain>
+        <domain includeSubdomains="true">qq.com</domain>
+        <domain includeSubdomains="true">bilibili.com</domain>
     </domain-config>
 </network-security-config> 

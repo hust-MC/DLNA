@@ -21,6 +21,9 @@ import org.fourthline.cling.support.model.TransportState
 import org.fourthline.cling.support.renderingcontrol.lastchange.ChannelMute
 import org.fourthline.cling.support.renderingcontrol.lastchange.ChannelVolume
 import org.fourthline.cling.support.renderingcontrol.lastchange.RenderingControlVariable
+import org.seamless.xml.SAXParser
+import org.xml.sax.InputSource
+import java.io.StringReader
 import java.util.concurrent.TimeUnit
 
 /**
@@ -47,31 +50,35 @@ class MediaRendererService(private val context: Context) {
     
     init {
         try {
-            // 创建一个不依赖XML解析器的LastChange实例
-            avTransportLastChange = LastChange(SCHEMA_URI, "AVTransport", 1, INITIAL_EVENT_XML)
-            Log.d(TAG, "MediaRendererService实例已创建(使用简化的LastChange初始化)")
+            // 尝试使用标准的AVTransportLastChangeParser初始化LastChange实例
+            avTransportLastChange = LastChange(AVTransportLastChangeParser())
+            Log.d(TAG, "MediaRendererService实例已创建(使用标准LastChange解析器)")
         } catch (e: Exception) {
             // 使用备用方法创建
             Log.e(TAG, "标准LastChange初始化失败，使用备用方法", e)
-            avTransportLastChange = createEmptyLastChange()
+            avTransportLastChange = createSafeLastChange()
         }
     }
     
     /**
-     * 创建一个空的LastChange对象，不依赖XML解析器
+     * 创建一个安全的LastChange对象
      */
-    private fun createEmptyLastChange(): LastChange {
-        return object : LastChange(SCHEMA_URI, "AVTransport", 1, INITIAL_EVENT_XML) {
-            // 重写方法，避免XML解析
-            override fun setEventedValue(instanceId: UnsignedIntegerFourBytes, eventedValue: Any): Boolean {
-                try {
-                    // 简单地记录状态变化而不进行XML转换
-                    Log.d(TAG, "状态变化: instanceId=$instanceId, value=$eventedValue")
-                    return true
-                } catch (ex: Exception) {
-                    return false
-                }
-            }
+    private fun createSafeLastChange(): LastChange {
+        // 创建一个安全的LastChange对象
+        val parser = AVTransportLastChangeParser()
+        
+        try {
+            // 预解析一个空的Event来初始化解析器
+            val initialXml = INITIAL_EVENT_XML
+            parser.parse(initialXml)
+            
+            // 创建LastChange实例
+            return LastChange(parser)
+        } catch (e: Exception) {
+            Log.e(TAG, "创建安全LastChange失败，使用最基本的实例化方式", e)
+            
+            // 使用最简单的构造函数
+            return LastChange(AVTransportLastChangeParser())
         }
     }
 
@@ -95,6 +102,7 @@ class MediaRendererService(private val context: Context) {
                 System.setProperty("jdk.xml.disallowDtd", "false")
                 System.setProperty("jdk.xml.enableExtensionFunctions", "true")
                 System.setProperty("javax.xml.parsers.SAXParserFactory", "org.apache.harmony.xml.parsers.SAXParserFactoryImpl")
+                System.setProperty("org.xml.sax.driver", "org.apache.harmony.xml.parsers.SAXParser")
                 Log.d(TAG, "已设置XML解析器安全属性")
             } catch (e: Exception) {
                 Log.e(TAG, "设置XML解析器属性失败", e)
@@ -119,6 +127,17 @@ class MediaRendererService(private val context: Context) {
          * 初始化服务实例
          */
         fun initialize(context: Context) {
+            // 确保在创建服务实例前已设置XML安全属性
+            try {
+                // 禁用可能导致问题的XML解析器安全特性
+                System.setProperty("jdk.xml.disallowDtd", "false")
+                System.setProperty("jdk.xml.enableExtensionFunctions", "true")
+                System.setProperty("javax.xml.parsers.SAXParserFactory", "org.apache.harmony.xml.parsers.SAXParserFactoryImpl")
+                System.setProperty("org.xml.sax.driver", "org.apache.harmony.xml.parsers.SAXParser")
+            } catch (e: Exception) {
+                Log.e(TAG, "设置XML解析器属性失败", e)
+            }
+            
             serviceInstance = MediaRendererService(context)
         }
         
@@ -228,12 +247,40 @@ class MediaRendererService(private val context: Context) {
         this.currentTrackDuration = "00:00:00"
         
         try {
-            // 使用自动播放功能设置媒体URI
-            MediaRendererService.mediaPlayerManager?.setMediaURIAndPlay(currentURI)
-            Log.d(TAG, "已设置媒体URI并将自动播放")
+            // 检查是否为爱奇艺链接
+            if (isIqiyiStream(currentURI)) {
+                Log.d(TAG, "检测到爱奇艺链接，使用特殊处理")
+                handleIqiyiStream(currentURI)
+            } else {
+                // 使用自动播放功能设置媒体URI
+                MediaRendererService.mediaPlayerManager?.setMediaURIAndPlay(currentURI)
+                Log.d(TAG, "已设置媒体URI并将自动播放")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "设置媒体URI失败: ${e.message}", e)
         }
+    }
+
+    /**
+     * 检查是否是爱奇艺流媒体
+     */
+    private fun isIqiyiStream(uri: String): Boolean {
+        return uri.contains("iqiyi.com") || uri.contains("qiyi.com")
+    }
+    
+    /**
+     * 处理爱奇艺流媒体
+     */
+    private fun handleIqiyiStream(uri: String) {
+        Log.d(TAG, "开始处理爱奇艺流媒体: $uri")
+        
+        // 清理链接（移除特殊字符）
+        val cleanedUri = uri.replace("&amp;", "&")
+            .replace(" ", "%20")
+            
+        // 直接交给MediaPlayerManager处理，它有针对爱奇艺的特殊处理逻辑
+        MediaRendererService.mediaPlayerManager?.setMediaURIAndPlay(cleanedUri)
+        Log.d(TAG, "已将爱奇艺流媒体交给播放器处理: $cleanedUri")
     }
 
     /** 播放 */

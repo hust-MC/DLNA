@@ -95,6 +95,17 @@ dependencies {
     
     // OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.9.3")
+    
+    // XML Processing
+    // 注意：xmlpull已内置在Android中，不需要额外添加
+    implementation("net.sf.kxml:kxml2:2.3.0")
+    
+    // M3U8 Parser & JSON
+    implementation("com.google.code.gson:gson:2.8.9")
+    
+    // Glide - 使用稳定版本
+    implementation("com.github.bumptech.glide:glide:4.11.0")
+    annotationProcessor("com.github.bumptech.glide:compiler:4.11.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
