@@ -12,15 +12,17 @@ pluginManagement {
         id("org.jetbrains.kotlin.android") version "1.6.21"
     }
 }
+
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://jitpack.io") } // 添加其他仓库
-
-        maven("http://fourthline.org/m2/", { isAllowInsecureProtocol = true })
-
+        maven { url = uri("https://jitpack.io") }
+        jcenter()
+        maven("http://fourthline.org/m2/") { 
+            isAllowInsecureProtocol = true 
+        }
     }
 }
 

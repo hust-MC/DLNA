@@ -5,7 +5,21 @@ buildscript {
         mavenCentral() // Maven 中央仓库
     }
     dependencies {
-        classpath("com.android.tools.build:gradle:7.4.2") // AGP 版本
+        classpath("com.android.tools.build:gradle:7.3.1") // AGP 版本
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.6.21")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+        jcenter()
+        maven {
+            url = uri("http://fourthline.org/m2/")
+            isAllowInsecureProtocol = true
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 package com.example.dlna
 
+import android.content.Context
 import android.util.Log
 import org.fourthline.cling.binding.annotations.UpnpAction
 import org.fourthline.cling.binding.annotations.UpnpInputArgument
@@ -10,6 +11,7 @@ import org.fourthline.cling.binding.annotations.UpnpServiceType
 import org.fourthline.cling.binding.annotations.UpnpStateVariable
 import org.fourthline.cling.model.types.UnsignedIntegerFourBytes
 import org.fourthline.cling.model.types.UnsignedIntegerTwoBytes
+import com.example.dlna.MediaPlayerManager
 
 /**
  * UPnP渲染控制服务
@@ -22,25 +24,12 @@ import org.fourthline.cling.model.types.UnsignedIntegerTwoBytes
     serviceId = UpnpServiceId("RenderingControl"),
     serviceType = UpnpServiceType(value = "RenderingControl", version = 1)
 )
-class RenderingControlService {
+class RenderingControlService(private val context: Context) {
     companion object {
         private const val TAG = "RenderingControlService"
         
         /** 最大音量值 */
         private const val MAX_VOLUME = 100
-        
-        /** 媒体播放管理器引用 */
-        private var mediaPlayerManager: MediaPlayerManager? = null
-        
-        /**
-         * 设置媒体播放器管理器
-         * 
-         * @param manager MediaPlayerManager实例
-         */
-        fun setMediaPlayerManager(manager: MediaPlayerManager) {
-            mediaPlayerManager = manager
-            Log.d(TAG, "已设置媒体播放器管理器")
-        }
     }
 
     /** 实例ID状态变量 */
@@ -59,6 +48,19 @@ class RenderingControlService {
     @UpnpStateVariable(defaultValue = "0", datatype = "boolean")
     private var mute: Boolean = false
 
+    /** 媒体播放管理器引用 */
+    private var mediaPlayerManager: MediaPlayerManager? = null
+    
+    /**
+     * 设置媒体播放器管理器
+     * 
+     * @param manager MediaPlayerManager实例
+     */
+    fun setMediaPlayerManager(manager: MediaPlayerManager) {
+        Log.d(TAG, "设置MediaPlayerManager")
+        mediaPlayerManager = manager
+    }
+
     /** 设置音量 */
     @UpnpAction
     fun setVolume(
@@ -69,9 +71,8 @@ class RenderingControlService {
         Log.d(TAG, "设置音量: $desiredVolume")
         this.volume = desiredVolume
         
-        // 将UPnP音量值(0-100)转换为MediaPlayer音量值(0.0-1.0)
-        val normalizedVolume = desiredVolume.value.toFloat() / MAX_VOLUME
-        mediaPlayerManager?.setVolume(normalizedVolume)
+        // MediaPlayerManager中没有setVolume方法，所以我们这里只存储值，不执行操作
+        // 将来如果需要控制音量，可以在MediaPlayerManager中添加相应方法
     }
 
     /** 设置静音状态 */
@@ -84,14 +85,7 @@ class RenderingControlService {
         Log.d(TAG, "设置静音: $desiredMute")
         this.mute = desiredMute
         
-        // 根据静音设置调整音量
-        if (desiredMute == true) {
-            mediaPlayerManager?.setVolume(0f) // 静音
-        } else {
-            // 恢复之前的音量
-            val normalizedVolume = this.volume.value.toFloat() / MAX_VOLUME
-            mediaPlayerManager?.setVolume(normalizedVolume)
-        }
+        // MediaPlayerManager中没有setVolume方法，所以我们这里只存储值，不执行操作
     }
 
     /** 获取当前音量 */

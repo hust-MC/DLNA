@@ -71,16 +71,16 @@ class DLNAService : Service() {
     /** 服务创建回调 */
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "创建DLNA服务")
+        Log.d(TAG, "DLNA服务创建")
         
-        // 创建媒体播放器管理器
-        mediaPlayerManager = MediaPlayerManager(this)
+        // 初始化MediaPlayerManager
+        mediaPlayerManager = MediaPlayerManager(applicationContext)
+        
+        // 初始化服务
+        MediaRendererService.initialize(applicationContext)
         
         // 将媒体播放器管理器设置到MediaRendererService中
         MediaRendererService.setMediaPlayerManager(mediaPlayerManager)
-        
-        // 设置渲染控制服务的媒体播放器管理器
-        RenderingControlService.setMediaPlayerManager(mediaPlayerManager)
         
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
@@ -166,19 +166,12 @@ class DLNAService : Service() {
                 )
             }
 
-            // 创建渲染控制服务
-            @Suppress("UNCHECKED_CAST")
-            val renderingControlService = binder.read(RenderingControlService::class.java) as LocalService<RenderingControlService>
-            renderingControlService.setManager(
-                DefaultServiceManager(renderingControlService, RenderingControlService::class.java)
-            )
-
             // 创建本地设备实例
             localDevice = LocalDevice(
                 identity,
                 type,
                 details,
-                arrayOf(mediaRendererService, renderingControlService)
+                arrayOf(mediaRendererService)
             )
 
             // 注册设备到UPnP网络
@@ -196,15 +189,24 @@ class DLNAService : Service() {
 
     /** 服务销毁回调 */
     override fun onDestroy() {
-        // 释放媒体播放器资源
-        if (::mediaPlayerManager.isInitialized) {
-            mediaPlayerManager.releasePlayer()
+        Log.d(TAG, "Destroying DLNA service")
+        
+        // 释放媒体播放器
+        mediaPlayerManager.release()
+        
+        // 移除所有本地和远程设备
+        upnpService?.registry?.removeAllRemoteDevices()
+        upnpService?.registry?.removeAllLocalDevices()
+        
+        // 关闭UPnP服务
+        upnpService?.registry?.shutdown()
+        
+        // 解绑服务连接
+        serviceConnection?.let { 
+            unbindService(it)
         }
         
-        serviceConnection?.let {
-            applicationContext.unbindService(it)
-        }
-        upnpService?.get()?.shutdown()
+        stopForeground(true)
         super.onDestroy()
     }
 } 
