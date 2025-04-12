@@ -47,6 +47,9 @@ class MediaRendererService {
         /** 服务实例引用 */
         private var serviceInstance: MediaRendererService? = null
         
+        /** 状态变更对象引用 */
+        private var transportLastChange: TransportLastChange? = null
+        
         /**
          * 初始化服务
          * 
@@ -135,35 +138,31 @@ class MediaRendererService {
                     // 这里可以处理进度更新
                 }
 
-                override fun onPlaybackStateChanged(state: MediaPlayerManager.PlaybackState) {
-                    // 使用Handler确保在主线程上更新
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            val transportState = when (state) {
-                                MediaPlayerManager.PlaybackState.PLAYING -> "PLAYING"
-                                MediaPlayerManager.PlaybackState.PAUSED -> "PAUSED_PLAYBACK"
-                                MediaPlayerManager.PlaybackState.STOPPED -> "STOPPED"
-                                MediaPlayerManager.PlaybackState.ERROR -> "STOPPED"
+                    override fun onPlaybackStateChanged(state: MediaPlayerManager.PlaybackState) {
+                        when (state) {
+                            MediaPlayerManager.PlaybackState.PLAYING -> {
+                                Log.d(TAG, "播放状态变化: 播放中")
+                                transportLastChange?.setPlaying()
                             }
-                            serviceInstance?.currentTransportState = transportState
-                            Log.d(TAG, "播放状态更新为: $transportState")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "更新播放状态失败", e)
+                            MediaPlayerManager.PlaybackState.PAUSED -> {
+                                Log.d(TAG, "播放状态变化: 已暂停")
+                                transportLastChange?.setPaused()
+                            }
+                            MediaPlayerManager.PlaybackState.STOPPED -> {
+                                Log.d(TAG, "播放状态变化: 已停止")
+                                transportLastChange?.setStopped()
+                            }
+                            MediaPlayerManager.PlaybackState.ERROR -> {
+                                Log.d(TAG, "播放状态变化: 播放错误")
+                                transportLastChange?.setError()
+                            }
                         }
                     }
-                }
 
-                override fun onPlaybackCompleted() {
-                    // 使用Handler确保在主线程上更新
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            serviceInstance?.currentTransportState = "STOPPED"
-                            Log.d(TAG, "播放完成，状态更新为停止")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "更新播放完成状态失败", e)
-                        }
+                    override fun onPlaybackCompleted() {
+                        Log.d(TAG, "播放完成")
+                        transportLastChange?.setStopped()
                     }
-                }
 
                 override fun onError(errorMsg: String) {
                     Log.e(TAG, "播放错误: $errorMsg")
@@ -177,6 +176,11 @@ class MediaRendererService {
                         }
                     }
                 }
+
+                override fun onBufferingUpdate(percent: Int) {
+                    Log.e(TAG, "onBufferingUpdate: $percent")
+
+                }
             })
         }
     }
@@ -186,6 +190,9 @@ class MediaRendererService {
      */
     @UpnpStateVariable(defaultValue = "0", sendEvents = false, name = "InstanceID")
     private var instanceId: UnsignedIntegerFourBytes? = null
+
+    @UpnpStateVariable(defaultValue = "")
+    private var transportLastChange = TransportLastChange()
 
     @UpnpStateVariable(defaultValue = "STOPPED")
     private var currentTransportState: String = "STOPPED"
@@ -223,76 +230,176 @@ class MediaRendererService {
     @UpnpStateVariable(defaultValue = "00:00:00")
     private var relTime: String = "00:00:00"
 
-    /** 设置AV传输URI */
+    /**
+     * 设置URI动作
+     * 
+     * 设置要播放的媒体资源URI
+     * 
+     * @param instanceId 实例ID
+     * @param currentURI 媒体资源URI
+     * @param currentURIMetaData 媒体资源元数据
+     */
     @UpnpAction
     fun setAVTransportURI(
-        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes,
-        @UpnpInputArgument(name = "CurrentURI") currentURI: String,
-        @UpnpInputArgument(name = "CurrentURIMetaData") currentURIMetaData: String
+        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "CurrentURI") uri: String,
+        @UpnpInputArgument(name = "CurrentURIMetaData") metadata: String
     ) {
-        Log.d(TAG, "设置AV传输URI: $currentURI")
-        Log.d(TAG, "元数据: $currentURIMetaData")
+        Log.d(TAG, "接收到设置URI请求: $uri")
         
-        this.currentURI = currentURI
-        this.currentURIMetaData = currentURIMetaData
+        this.instanceId = instanceId
+        this.currentURI = uri
+        this.currentURIMetaData = metadata
         
-        // 清除之前的状态
-        this.mediaDuration = "00:00:00"
-        this.currentMediaDuration = "00:00:00"
-        this.currentTrackDuration = "00:00:00"
+        // 重置播放状态
+        this.currentTransportState = "STOPPED"
         
-        try {
-            // 使用自动播放功能设置媒体URI
-            MediaRendererService.mediaPlayerManager?.setMediaURIAndPlay(currentURI)
-            Log.d(TAG, "已设置媒体URI并将自动播放")
-        } catch (e: Exception) {
-            Log.e(TAG, "设置媒体URI失败: ${e.message}", e)
+        // 确保在主线程上设置媒体URI
+        Handler(Looper.getMainLooper()).post {
+            try {
+                Log.d(TAG, "准备设置媒体URI: $uri")
+//
+//                mediaPlayerManager?.setMediaURIAndPlay(uri)
+//                Log.d(TAG, "已设置媒体URI并将自动播放")
+//
+                // 启动视频播放页面
+                appContext?.let { context ->
+                    VideoPlayerActivity.start(context, uri)
+                    Log.d(TAG, "已启动视频播放页面")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "设置媒体URI失败", e)
+            }
         }
     }
 
-    /** 播放 */
+    /**
+     * 播放动作
+     * 
+     * 开始播放当前设置的媒体
+     * 
+     * @param instanceId 实例ID
+     * @param speed 播放速度
+     */
     @UpnpAction
     fun play(
-        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
         @UpnpInputArgument(name = "Speed") speed: String
     ) {
-        Log.d(TAG, "播放命令接收，速度: $speed")
+        Log.d(TAG, "接收到播放请求，速度: $speed")
         this.speed = speed
-        MediaRendererService.mediaPlayerManager?.play()
+        
+        // 使用Handler确保在主线程上调用播放
+        Handler(Looper.getMainLooper()).post {
+            try {
+//                mediaPlayerManager?.play()
+                
+                // 更新状态
+                this@MediaRendererService.currentTransportState = "PLAYING"
+                
+                // 如果尚未打开播放页面，则启动视频播放页面
+                if (currentURI.isNotEmpty()) {
+                    appContext?.let { context ->
+                        VideoPlayerActivity.start(context, currentURI)
+                        Log.d(TAG, "播放时启动视频播放页面")
+                    }
+                }
+                
+                Log.d(TAG, "已开始播放")
+            } catch (e: Exception) {
+                Log.e(TAG, "播放失败: ${e.message}", e)
+            }
+        }
     }
-
-    /** 暂停 */
+    
+    /**
+     * 暂停动作
+     * 
+     * 暂停当前播放的媒体
+     * 
+     * @param instanceId 实例ID
+     */
     @UpnpAction
     fun pause(
-        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
+        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes
     ) {
-        Log.d(TAG, "暂停命令接收")
-        MediaRendererService.mediaPlayerManager?.pause()
+        Log.d(TAG, "接收到暂停请求")
+        
+        // 使用Handler确保在主线程上调用暂停
+        Handler(Looper.getMainLooper()).post {
+            try {
+                mediaPlayerManager?.pause()
+                
+                // 更新状态
+                this@MediaRendererService.currentTransportState = "PAUSED_PLAYBACK"
+                
+                Log.d(TAG, "已暂停播放")
+            } catch (e: Exception) {
+                Log.e(TAG, "暂停失败: ${e.message}", e)
+            }
+        }
     }
-
-    /** 停止 */
+    
+    /**
+     * 停止动作
+     * 
+     * 停止当前播放的媒体
+     * 
+     * @param instanceId 实例ID
+     */
     @UpnpAction
     fun stop(
-        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
+        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes
     ) {
-        Log.d(TAG, "停止命令接收")
-        MediaRendererService.mediaPlayerManager?.stop()
+        Log.d(TAG, "接收到停止请求")
+        
+        // 使用Handler确保在主线程上调用停止
+        Handler(Looper.getMainLooper()).post {
+            try {
+                mediaPlayerManager?.stop()
+                
+                // 更新状态
+                this@MediaRendererService.currentTransportState = "STOPPED"
+                
+                Log.d(TAG, "已停止播放")
+            } catch (e: Exception) {
+                Log.e(TAG, "停止失败: ${e.message}", e)
+            }
+        }
     }
-
-    /** 跳转到指定位置 */
+    
+    /**
+     * 跳转动作
+     * 
+     * 将播放位置跳转到指定时间
+     * 
+     * @param instanceId 实例ID
+     * @param unit 时间单位
+     * @param target 目标位置
+     */
     @UpnpAction
     fun seek(
-        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
         @UpnpInputArgument(name = "Unit") unit: String,
         @UpnpInputArgument(name = "Target") target: String
     ) {
-        Log.d(TAG, "跳转命令接收: $unit, $target")
+        Log.d(TAG, "接收到跳转请求: 单位=$unit, 目标=$target")
+        
         this.unit = unit
         this.target = target
         
-        if (unit == "REL_TIME" || unit == "ABS_TIME") {
-            val seconds = MediaRendererService.parseTimeString(target)
-            MediaRendererService.mediaPlayerManager?.seekTo(seconds * 1000)
+        // 使用Handler确保在主线程上调用跳转
+        Handler(Looper.getMainLooper()).post {
+            try {
+                if (unit == "REL_TIME" || unit == "ABS_TIME") {
+                    val seconds = MediaRendererService.parseTimeString(target)
+                    mediaPlayerManager?.seekTo(seconds * 1000)
+                    
+                    Log.d(TAG, "已跳转到 ${seconds}秒")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "跳转失败: ${e.message}", e)
+            }
         }
     }
 
@@ -333,5 +440,30 @@ class MediaRendererService {
         
         Log.d(TAG, "获取位置信息: $formattedPosition / $mediaDuration")
         return arrayOf(absTime, relTime, mediaDuration)
+    }
+}
+
+/**
+ * 状态变更辅助类
+ */
+class TransportLastChange {
+    // 设置状态为播放中
+    fun setPlaying() {
+        Log.d("TransportLastChange", "设置状态: 播放中")
+    }
+    
+    // 设置状态为暂停
+    fun setPaused() {
+        Log.d("TransportLastChange", "设置状态: 已暂停")
+    }
+    
+    // 设置状态为停止
+    fun setStopped() {
+        Log.d("TransportLastChange", "设置状态: 已停止")
+    }
+    
+    // 设置状态为错误
+    fun setError() {
+        Log.d("TransportLastChange", "设置状态: 错误")
     }
 } 

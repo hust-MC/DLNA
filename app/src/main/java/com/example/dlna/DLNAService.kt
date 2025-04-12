@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.example.dlna.MediaRendererService.Companion.initialize
 import org.fourthline.cling.android.AndroidUpnpService
 import org.fourthline.cling.android.AndroidUpnpServiceImpl
 import org.fourthline.cling.binding.annotations.AnnotationLocalServiceBinder
@@ -158,9 +159,12 @@ class DLNAService : Service() {
             
             @Suppress("UNCHECKED_CAST")
             val mediaRendererService = binder.read(MediaRendererService::class.java) as LocalService<MediaRendererService>
-            mediaRendererService.setManager(
-                DefaultServiceManager(mediaRendererService, MediaRendererService::class.java)
-            )
+            mediaRendererService.apply {
+                initialize(this@DLNAService)
+                setManager(
+                    DefaultServiceManager(mediaRendererService, MediaRendererService::class.java)
+                )
+            }
 
             // 创建渲染控制服务
             @Suppress("UNCHECKED_CAST")
