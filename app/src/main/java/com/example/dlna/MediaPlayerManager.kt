@@ -1,8 +1,6 @@
 package com.example.dlna
 
 import android.content.Context
-import android.media.browse.MediaBrowser
-import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -11,7 +9,6 @@ import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
-import com.google.android.exoplayer2.source.ProgressiveMediaSource
 import com.google.android.exoplayer2.source.hls.HlsMediaSource
 import java.util.Timer
 import java.util.TimerTask
@@ -24,10 +21,6 @@ import java.util.TimerTask
 class MediaPlayerManager(private val context: Context) {
     companion object {
         private const val TAG = "MediaPlayerManager"
-        private const val MAX_RETRIES = 3
-        
-        // User-Agent常量
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
     private var exoPlayer: ExoPlayer? = null
@@ -40,7 +33,6 @@ class MediaPlayerManager(private val context: Context) {
     private var retryCount = 0
     private var surface: Surface? = null
     private var shouldAutoPlay: Boolean = false
-    private var pendingUri: String? = null
 
     enum class PlaybackState {
         STOPPED, PLAYING, PAUSED, ERROR
@@ -58,14 +50,14 @@ class MediaPlayerManager(private val context: Context) {
     fun setStateListener(listener: MediaStateListener) {
         stateListener = listener
     }
-    
+
     fun setSurface(surface: Surface?) {
         this.surface = surface
         runOnMainThread {
             exoPlayer?.setVideoSurface(surface)
         }
     }
-    
+
     /**
      * 设置媒体URI并自动播放
      */
@@ -74,16 +66,12 @@ class MediaPlayerManager(private val context: Context) {
         setMediaURI(uri)
     }
 
-    fun setMediaURI(uri: String) {
+    private fun setMediaURI(uri: String) {
         try {
             currentUri = uri
             retryCount = 0
             Log.d(TAG, "设置媒体URI: $uri")
-            
-            // 处理URI，特别是爱奇艺的复杂URI
-            val processedUri = processUri(uri)
-            Log.d(TAG, "处理后的URI: $processedUri")
-            
+
             // 在主线程上释放播放器和设置新的媒体源
             runOnMainThread {
                 try {
@@ -97,73 +85,6 @@ class MediaPlayerManager(private val context: Context) {
             handleError(e)
         }
     }
-    
-    /**
-     * 处理URI
-     */
-    private fun processUri(uri: String): String {
-        Log.d(TAG, "处理URI: ${uri.take(100)}...")
-        
-        // 处理空URI
-        if (uri.isBlank()) {
-            Log.e(TAG, "URI为空")
-            throw IllegalArgumentException("URI不能为空")
-        }
-        
-        // 爱奇艺链接特殊处理
-        if (uri.contains("iqiyi.com") || uri.contains("iqiy") || uri.contains("qiyi.com")) {
-            var processedUri = uri
-            
-            // 1. 移除查询参数以简化URL（这些参数可能导致错误）
-            if (uri.contains("?")) {
-                processedUri = uri.substring(0, uri.indexOf("?"))
-                Log.d(TAG, "已移除爱奇艺URI查询参数: $processedUri")
-            }
-            
-            // 2. 转换为HTTP协议（如果是HTTPS）
-            if (processedUri.startsWith("https://")) {
-                processedUri = processedUri.replace("https://", "http://")
-                Log.d(TAG, "将爱奇艺URI转换为HTTP: $processedUri")
-            }
-            
-            // 3. 移除多余的后缀，如果有(比如.m3u8)
-            if (processedUri.contains(".m3u8", ignoreCase = true)) {
-                processedUri = processedUri.replace(".m3u8", "", ignoreCase = true)
-                Log.d(TAG, "已移除m3u8后缀: $processedUri")
-            }
-            
-            // 4. 检查是否包含已知的问题域名并替换
-            val problematicDomains = arrayOf("cache.video.iqiyi.com", "mus.video.iqiyi.com")
-            for (domain in problematicDomains) {
-                if (processedUri.contains(domain)) {
-                    processedUri = processedUri.replace(domain, "data.video.iqiyi.com")
-                    Log.d(TAG, "已替换问题域名: $processedUri")
-                    break
-                }
-            }
-            
-            return processedUri
-        }
-        
-        // 如果URI中包含特殊字符，进行URL编码
-        if (uri.contains(" ") || uri.contains("#") || uri.contains("%")) {
-            try {
-                val encodedUri = java.net.URLEncoder.encode(uri, "UTF-8")
-                    .replace("+", "%20") // 替换空格为%20而不是+
-                Log.d(TAG, "URL编码后的URI: $encodedUri")
-                return encodedUri
-            } catch (e: Exception) {
-                Log.e(TAG, "URI编码失败", e)
-                // 如果编码失败，尝试简单替换
-                val simpleEncodedUri = uri.replace(" ", "%20")
-                    .replace("#", "%23")
-                Log.d(TAG, "简单替换后的URI: $simpleEncodedUri")
-                return simpleEncodedUri
-            }
-        }
-        
-        return uri
-    }
 
     private fun setupExoPlayer(uri: String) {
         try {
@@ -173,10 +94,10 @@ class MediaPlayerManager(private val context: Context) {
                 runOnMainThread { setupExoPlayer(uri) }
                 return
             }
-            
+
             // 创建ExoPlayer实例
             exoPlayer = ExoPlayer.Builder(context).build()
-            
+
             // 设置播放状态监听
             exoPlayer?.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -184,14 +105,14 @@ class MediaPlayerManager(private val context: Context) {
                         when (playbackState) {
                             Player.STATE_READY -> {
                                 Log.d(TAG, "ExoPlayer状态: 就绪")
-                                
+
                                 // 获取并报告媒体时长
                                 val durationMs = exoPlayer?.duration?.toInt() ?: 0
                                 if (durationMs > 0) {
                                     duration = durationMs
                                     stateListener?.onPrepared(durationMs)
                                 }
-                                
+
                                 // 如果设置了自动播放
                                 if (shouldAutoPlay) {
                                     exoPlayer?.play()
@@ -201,6 +122,7 @@ class MediaPlayerManager(private val context: Context) {
                                     shouldAutoPlay = false
                                 }
                             }
+
                             Player.STATE_ENDED -> {
                                 Log.d(TAG, "ExoPlayer状态: 播放结束")
                                 currentState = PlaybackState.STOPPED
@@ -208,37 +130,24 @@ class MediaPlayerManager(private val context: Context) {
                                 stateListener?.onPlaybackCompleted()
                                 stopProgressTimer()
                             }
+
                             Player.STATE_BUFFERING -> {
                                 Log.d(TAG, "ExoPlayer状态: 缓冲中")
                                 stateListener?.onBufferingUpdate(50) // 缓冲中
                             }
+
                             Player.STATE_IDLE -> {
                                 Log.d(TAG, "ExoPlayer状态: 空闲")
                             }
                         }
                     }
                 }
-                
+
                 override fun onPlayerError(error: PlaybackException) {
                     Log.e(TAG, "ExoPlayer错误: ${error.message}")
-                    
-                    if (retryCount < MAX_RETRIES) {
-                        retryCount++
-                        Log.d(TAG, "尝试重新播放 ($retryCount/$MAX_RETRIES)")
-                        
-                        // 常规重试
-                        mainHandler.postDelayed({
-                            setupExoPlayer(uri)
-                        }, 1000)
-                    } else {
-                        runOnMainThread {
-                            currentState = PlaybackState.ERROR
-                            stateListener?.onPlaybackStateChanged(currentState)
-                            stateListener?.onError("播放错误: ${error.message}")
-                        }
-                    }
+                    handleError(error)
                 }
-                
+
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     runOnMainThread {
                         if (isPlaying) {
@@ -253,17 +162,16 @@ class MediaPlayerManager(private val context: Context) {
                     }
                 }
             })
-            
+
             // 设置视频输出surface
             if (surface != null) {
                 exoPlayer?.setVideoSurface(surface)
             }
-            
-            // 创建适合的媒体源
-//            val mediaSource = createMediaSource(uri)
-            
+
             // 设置媒体源并准备播放
-            val mediaSource: HlsMediaSource = HlsMediaSource.Factory(MediaCacheFactory.getCacheFactory(context)).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(uri))
+            val mediaSource: HlsMediaSource =
+                HlsMediaSource.Factory(MediaCacheFactory.getCacheFactory(context))
+                    .setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(uri))
 //            val mediaSource: ProgressiveMediaSource = ProgressiveMediaSource.Factory(MediaCacheFactory .getCacheFactory(context.applicationContext)).createMediaSource(MediaItem.fromUri(uri))
 
             exoPlayer?.setMediaSource(mediaSource)
@@ -272,82 +180,21 @@ class MediaPlayerManager(private val context: Context) {
             handleError(e)
         }
     }
-    
-//    private fun createMediaSource(uri: String): MediaSource {
-//        // 确保该方法在主线程中调用
-//        if (Looper.myLooper() != Looper.getMainLooper()) {
-//            throw IllegalStateException("createMediaSource必须在主线程调用")
-//        }
-//
-//        // 创建HTTP数据源工厂
-//        val httpDataSourceFactory = createHttpDataSourceFactory(uri)
-//
-//        // 对于爱奇艺的链接，使用特殊处理
-//        if (uri.contains("iqiyi.com") || uri.contains("iqiy") || uri.contains("qiyi.com")) {
-//            Log.d(TAG, "爱奇艺链接使用特殊处理媒体源")
-//
-//            // 创建媒体项，明确指定为MP4格式，避免任何HLS解析
-//            val mediaItem = MediaItem.fromUri(uri)
-//
-//            // 使用默认媒体源工厂
-//            return ProgressiveMediaSource.Factory(DefaultHttpDataSource.Factory .getCacheFactory(context.applicationContext)).createMediaSource(mediaItem)
-//        }
-        
-//        // 为HLS流(M3U8)创建特殊的媒体源
-//        if (uri.contains(".m3u8", ignoreCase = true)) {
-//            return HlsMediaSource.Factory(httpDataSourceFactory)
-//                .setAllowChunklessPreparation(true)
-//                .createMediaSource(MediaItem.fromUri(uri))
-//        }
-//
-//        // 为普通媒体创建默认媒体源
-//        return DefaultMediaSourceFactory(httpDataSourceFactory)
-//            .createMediaSource(MediaItem.fromUri(uri))
-//    }
-    
-//    /**
-//     * 创建HTTP数据源工厂
-//     */
-//    private fun createHttpDataSourceFactory(uri: String): DefaultHttpDataSource.Factory {
-//        // 创建带有自定义UA和头信息的数据源工厂
-//        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-//            .setUserAgent(USER_AGENT)
-//            .setAllowCrossProtocolRedirects(true)
-//            .setConnectTimeoutMs(30000)
-//            .setReadTimeoutMs(30000)
-//
-//        // 针对爱奇艺链接添加额外的请求头
-//        if (uri.contains("iqiyi.com") || uri.contains("iqiy") || uri.contains("qiyi.com")) {
-//            val headers = HashMap<String, String>()
-//            headers["Referer"] = "https://www.iqiyi.com/"
-//            headers["Origin"] = "https://www.iqiyi.com"
-//            httpDataSourceFactory.setDefaultRequestProperties(headers)
-//        }
-//
-//        return httpDataSourceFactory
-//    }
-    
+
     private fun handleError(e: Exception) {
         Log.e(TAG, "播放错误", e)
-        if (retryCount < MAX_RETRIES) {
-            retryCount++
-            Log.d(TAG, "发生错误，尝试重试: $retryCount")
-            mainHandler.postDelayed({
-                setupExoPlayer(currentUri)
-            }, 1000L * retryCount)
-        } else {
-            runOnMainThread {
-                currentState = PlaybackState.ERROR
-                stateListener?.onPlaybackStateChanged(currentState)
-                stateListener?.onError("播放失败: ${e.message}")
-            }
+
+        runOnMainThread {
+            currentState = PlaybackState.ERROR
+            stateListener?.onPlaybackStateChanged(currentState)
+            stateListener?.onError("播放失败: ${e.message}")
         }
     }
-    
+
     private fun startProgressTimer() {
         stopProgressTimer()
         progressTimer = Timer().apply {
-            scheduleAtFixedRate(object : TimerTask() {
+            schedule(object : TimerTask() {
                 override fun run() {
                     runOnMainThread {
                         exoPlayer?.let { player ->
@@ -361,12 +208,12 @@ class MediaPlayerManager(private val context: Context) {
             }, 0, 1000)
         }
     }
-    
+
     private fun stopProgressTimer() {
         progressTimer?.cancel()
         progressTimer = null
     }
-    
+
     /**
      * 确保在主线程上运行代码
      */
@@ -383,13 +230,13 @@ class MediaPlayerManager(private val context: Context) {
             exoPlayer?.play()
         }
     }
-    
+
     fun pause() {
         runOnMainThread {
             exoPlayer?.pause()
         }
     }
-    
+
     fun stop() {
         runOnMainThread {
             exoPlayer?.stop()
@@ -398,13 +245,13 @@ class MediaPlayerManager(private val context: Context) {
             stopProgressTimer()
         }
     }
-    
+
     fun seekTo(positionMs: Int) {
         runOnMainThread {
             exoPlayer?.seekTo(positionMs.toLong())
         }
     }
-    
+
     fun getCurrentPosition(): Int {
         return if (Looper.myLooper() == Looper.getMainLooper()) {
             exoPlayer?.currentPosition?.toInt() ?: 0
@@ -413,21 +260,21 @@ class MediaPlayerManager(private val context: Context) {
             0
         }
     }
-    
+
     fun getDuration(): Int {
         return duration
     }
-    
+
     fun getCurrentState(): PlaybackState {
         return currentState
     }
-    
+
     fun setVolume(volume: Float) {
         runOnMainThread {
             exoPlayer?.volume = volume
         }
     }
-    
+
     fun release() {
         runOnMainThread {
             stopProgressTimer()
@@ -437,7 +284,7 @@ class MediaPlayerManager(private val context: Context) {
             retryCount = 0
         }
     }
-    
+
     fun releasePlayer() {
         release()
     }

@@ -258,10 +258,7 @@ class MediaRendererService {
         Handler(Looper.getMainLooper()).post {
             try {
                 Log.d(TAG, "准备设置媒体URI: $uri")
-//
-//                mediaPlayerManager?.setMediaURIAndPlay(uri)
-//                Log.d(TAG, "已设置媒体URI并将自动播放")
-//
+
                 // 启动视频播放页面
                 appContext?.let { context ->
                     VideoPlayerActivity.start(context, uri)
@@ -292,8 +289,6 @@ class MediaRendererService {
         // 使用Handler确保在主线程上调用播放
         Handler(Looper.getMainLooper()).post {
             try {
-//                mediaPlayerManager?.play()
-                
                 // 更新状态
                 this@MediaRendererService.currentTransportState = "PLAYING"
                 
