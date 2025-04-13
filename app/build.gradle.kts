@@ -69,7 +69,4 @@ dependencies {
     implementation("com.google.android.exoplayer:exoplayer-core:2.19.1")
     implementation("com.google.android.exoplayer:exoplayer-ui:2.19.1")
     implementation("com.google.android.exoplayer:exoplayer-hls:2.19.1") // HLS支持(M3U8)
-
-    // OkHttp网络请求库
-    implementation("com.squareup.okhttp3:okhttp:4.9.0")
 }

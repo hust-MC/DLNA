@@ -1,6 +1,7 @@
 package com.example.dlna
 
 import android.content.Context
+import android.media.browse.MediaBrowser
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -10,10 +11,8 @@ import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
-import com.google.android.exoplayer2.source.DefaultMediaSourceFactory
-import com.google.android.exoplayer2.source.MediaSource
+import com.google.android.exoplayer2.source.ProgressiveMediaSource
 import com.google.android.exoplayer2.source.hls.HlsMediaSource
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
 import java.util.Timer
 import java.util.TimerTask
 
@@ -89,7 +88,7 @@ class MediaPlayerManager(private val context: Context) {
             runOnMainThread {
                 try {
                     release()
-                    setupExoPlayer("https://sf1-cdn-tos.huoshanstatic.com/obj/media-fe/xgplayer_doc_video/mp4/xgplayer-demo-360p.mp4")
+                    setupExoPlayer(uri)
                 } catch (e: Exception) {
                     handleError(e)
                 }
@@ -223,65 +222,6 @@ class MediaPlayerManager(private val context: Context) {
                 override fun onPlayerError(error: PlaybackException) {
                     Log.e(TAG, "ExoPlayer错误: ${error.message}")
                     
-                    // 爱奇艺链接特殊处理
-                    if (uri.contains("iqiyi.com") || uri.contains("iqiy") || uri.contains("qiyi.com")) {
-                        Log.d(TAG, "爱奇艺链接播放错误，尝试其他方式处理")
-                        
-                        // 完全重置ExoPlayer
-                        runOnMainThread {
-                            try {
-                                // 释放当前播放器
-                                exoPlayer?.release()
-                                
-                                // 创建新播放器
-                                exoPlayer = ExoPlayer.Builder(context).build()
-                                
-                                // 重新设置监听器
-                                exoPlayer?.addListener(this)
-                                
-                                // 设置视频输出
-                                if (surface != null) {
-                                    exoPlayer?.setVideoSurface(surface)
-                                }
-                                
-                                // 创建纯HTTP数据源工厂
-                                val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-                                    .setUserAgent(USER_AGENT)
-                                    .setAllowCrossProtocolRedirects(true)
-                                    .setConnectTimeoutMs(30000)
-                                    .setReadTimeoutMs(30000)
-                                
-                                // 设置请求头
-                                val headers = HashMap<String, String>()
-                                headers["Referer"] = "https://www.iqiyi.com/"
-                                headers["Origin"] = "https://www.iqiyi.com"
-                                httpDataSourceFactory.setDefaultRequestProperties(headers)
-                                
-                                // 创建媒体项，指定类型为其他格式（而不是HLS）
-                                val mediaItem = MediaItem.Builder()
-                                    .setUri(uri)
-                                    .setMimeType("video/mp4") // 强制指定为MP4格式
-                                    .build()
-                                
-                                // 使用默认媒体源工厂（不使用HLS）
-                                val mediaSource = DefaultMediaSourceFactory(httpDataSourceFactory)
-                                    .createMediaSource(mediaItem)
-                                
-                                // 设置媒体源并播放
-                                exoPlayer?.setMediaSource(mediaSource)
-                                exoPlayer?.prepare()
-                                
-                                if (shouldAutoPlay) {
-                                    exoPlayer?.play()
-                                }
-                                
-                                return@runOnMainThread
-                            } catch (e: Exception) {
-                                Log.e(TAG, "爱奇艺链接特殊处理失败", e)
-                            }
-                        }
-                    }
-                    
                     if (retryCount < MAX_RETRIES) {
                         retryCount++
                         Log.d(TAG, "尝试重新播放 ($retryCount/$MAX_RETRIES)")
@@ -320,9 +260,12 @@ class MediaPlayerManager(private val context: Context) {
             }
             
             // 创建适合的媒体源
-            val mediaSource = createMediaSource(uri)
+//            val mediaSource = createMediaSource(uri)
             
             // 设置媒体源并准备播放
+            val mediaSource: HlsMediaSource = HlsMediaSource.Factory(MediaCacheFactory.getCacheFactory(context)).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(uri))
+//            val mediaSource: ProgressiveMediaSource = ProgressiveMediaSource.Factory(MediaCacheFactory .getCacheFactory(context.applicationContext)).createMediaSource(MediaItem.fromUri(uri))
+
             exoPlayer?.setMediaSource(mediaSource)
             exoPlayer?.prepare()
         } catch (e: Exception) {
@@ -330,63 +273,59 @@ class MediaPlayerManager(private val context: Context) {
         }
     }
     
-    private fun createMediaSource(uri: String): MediaSource {
-        // 确保该方法在主线程中调用
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            throw IllegalStateException("createMediaSource必须在主线程调用")
-        }
-            
-        // 创建HTTP数据源工厂
-        val httpDataSourceFactory = createHttpDataSourceFactory(uri)
+//    private fun createMediaSource(uri: String): MediaSource {
+//        // 确保该方法在主线程中调用
+//        if (Looper.myLooper() != Looper.getMainLooper()) {
+//            throw IllegalStateException("createMediaSource必须在主线程调用")
+//        }
+//
+//        // 创建HTTP数据源工厂
+//        val httpDataSourceFactory = createHttpDataSourceFactory(uri)
+//
+//        // 对于爱奇艺的链接，使用特殊处理
+//        if (uri.contains("iqiyi.com") || uri.contains("iqiy") || uri.contains("qiyi.com")) {
+//            Log.d(TAG, "爱奇艺链接使用特殊处理媒体源")
+//
+//            // 创建媒体项，明确指定为MP4格式，避免任何HLS解析
+//            val mediaItem = MediaItem.fromUri(uri)
+//
+//            // 使用默认媒体源工厂
+//            return ProgressiveMediaSource.Factory(DefaultHttpDataSource.Factory .getCacheFactory(context.applicationContext)).createMediaSource(mediaItem)
+//        }
         
-        // 对于爱奇艺的链接，使用特殊处理
-        if (uri.contains("iqiyi.com") || uri.contains("iqiy") || uri.contains("qiyi.com")) {
-            Log.d(TAG, "爱奇艺链接使用特殊处理媒体源")
-            
-            // 创建媒体项，明确指定为MP4格式，避免任何HLS解析
-            val mediaItem = MediaItem.Builder()
-                .setUri(uri)
-                .setMimeType("video/mp4") // 强制指定为MP4格式
-                .build()
-            
-            // 使用默认媒体源工厂
-            return DefaultMediaSourceFactory(httpDataSourceFactory)
-                .createMediaSource(mediaItem)
-        }
-        
-        // 为HLS流(M3U8)创建特殊的媒体源
-        if (uri.contains(".m3u8", ignoreCase = true)) {
-            return HlsMediaSource.Factory(httpDataSourceFactory)
-                .setAllowChunklessPreparation(true)
-                .createMediaSource(MediaItem.fromUri(uri))
-        }
-        
-        // 为普通媒体创建默认媒体源
-        return DefaultMediaSourceFactory(httpDataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(uri))
-    }
+//        // 为HLS流(M3U8)创建特殊的媒体源
+//        if (uri.contains(".m3u8", ignoreCase = true)) {
+//            return HlsMediaSource.Factory(httpDataSourceFactory)
+//                .setAllowChunklessPreparation(true)
+//                .createMediaSource(MediaItem.fromUri(uri))
+//        }
+//
+//        // 为普通媒体创建默认媒体源
+//        return DefaultMediaSourceFactory(httpDataSourceFactory)
+//            .createMediaSource(MediaItem.fromUri(uri))
+//    }
     
-    /**
-     * 创建HTTP数据源工厂
-     */
-    private fun createHttpDataSourceFactory(uri: String): DefaultHttpDataSource.Factory {
-        // 创建带有自定义UA和头信息的数据源工厂
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(30000)
-            .setReadTimeoutMs(30000)
-        
-        // 针对爱奇艺链接添加额外的请求头
-        if (uri.contains("iqiyi.com") || uri.contains("iqiy") || uri.contains("qiyi.com")) {
-            val headers = HashMap<String, String>()
-            headers["Referer"] = "https://www.iqiyi.com/"
-            headers["Origin"] = "https://www.iqiyi.com"
-            httpDataSourceFactory.setDefaultRequestProperties(headers)
-        }
-        
-        return httpDataSourceFactory
-    }
+//    /**
+//     * 创建HTTP数据源工厂
+//     */
+//    private fun createHttpDataSourceFactory(uri: String): DefaultHttpDataSource.Factory {
+//        // 创建带有自定义UA和头信息的数据源工厂
+//        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+//            .setUserAgent(USER_AGENT)
+//            .setAllowCrossProtocolRedirects(true)
+//            .setConnectTimeoutMs(30000)
+//            .setReadTimeoutMs(30000)
+//
+//        // 针对爱奇艺链接添加额外的请求头
+//        if (uri.contains("iqiyi.com") || uri.contains("iqiy") || uri.contains("qiyi.com")) {
+//            val headers = HashMap<String, String>()
+//            headers["Referer"] = "https://www.iqiyi.com/"
+//            headers["Origin"] = "https://www.iqiyi.com"
+//            httpDataSourceFactory.setDefaultRequestProperties(headers)
+//        }
+//
+//        return httpDataSourceFactory
+//    }
     
     private fun handleError(e: Exception) {
         Log.e(TAG, "播放错误", e)
