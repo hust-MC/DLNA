@@ -65,8 +65,5 @@ dependencies {
 // https://mvnrepository.com/artifact/javax.servlet/javax.servlet-api
     implementation("javax.servlet:javax.servlet-api:3.1.0")
 
-    // ExoPlayer依赖
-    implementation("com.google.android.exoplayer:exoplayer-core:2.19.1")
-    implementation("com.google.android.exoplayer:exoplayer-ui:2.19.1")
-    implementation("com.google.android.exoplayer:exoplayer-hls:2.19.1") // HLS支持(M3U8)
+    implementation(project(":videoplayer"))
 }

@@ -25,7 +25,6 @@ import org.fourthline.cling.model.meta.LocalDevice
 import org.fourthline.cling.model.meta.LocalService
 import org.fourthline.cling.model.meta.ManufacturerDetails
 import org.fourthline.cling.model.meta.ModelDetails
-import org.fourthline.cling.model.types.DeviceType
 import org.fourthline.cling.model.types.UDADeviceType
 import org.fourthline.cling.model.types.UDN
 import java.util.UUID
