@@ -79,7 +79,7 @@ class DLNAService : Service() {
         MediaRendererService.initialize(applicationContext)
 
         // 将媒体播放器管理器设置到MediaRendererService中
-        MediaRendererService.setMediaPlayerManager(mediaPlayerManager)
+//        MediaRendererService.setMediaPlayerManager(mediaPlayerManager)
 
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())

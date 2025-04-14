@@ -39,9 +39,6 @@ class MediaRendererService {
         /** 应用上下文引用 */
         private var appContext: Context? = null
 
-        /** 媒体播放器管理器 */
-        private var mediaPlayerManager: MediaPlayerManager? = null
-
         /** 服务实例引用 */
         private var serviceInstance: MediaRendererService? = null
 
@@ -58,17 +55,6 @@ class MediaRendererService {
         fun initialize(context: Context) {
             appContext = context.applicationContext
             Log.d(TAG, "MediaRendererService已初始化")
-        }
-
-        /**
-         * 设置媒体播放器管理器
-         *
-         * @param manager MediaPlayerManager实例
-         */
-        fun setMediaPlayerManager(manager: MediaPlayerManager) {
-            mediaPlayerManager = manager
-            initializePlayerListeners()
-            Log.d(TAG, "已设置MediaPlayerManager")
         }
 
         /**
@@ -106,84 +92,6 @@ class MediaRendererService {
             return 0
         }
 
-        /**
-         * 初始化播放器监听器
-         *
-         * 设置媒体播放器状态变化监听器
-         */
-        private fun initializePlayerListeners() {
-            mediaPlayerManager?.setStateListener(object : MediaPlayerManager.MediaStateListener {
-                override fun onPrepared(durationMs: Int) {
-                    val formattedDuration = formatTime(durationMs)
-                    Log.d(TAG, "媒体准备完成，时长: $formattedDuration")
-
-                    // 使用Handler确保在主线程上更新
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            serviceInstance?.apply {
-                                currentMediaDuration = formattedDuration
-                                mediaDuration = formattedDuration
-                                currentTrackDuration = formattedDuration
-                            }
-                            Log.d(TAG, "更新媒体时长: $formattedDuration")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "更新媒体时长失败", e)
-                        }
-                    }
-                }
-
-                override fun onProgressUpdate(positionMs: Int) {
-                    // 这里可以处理进度更新
-                }
-
-                override fun onPlaybackStateChanged(state: MediaPlayerManager.PlaybackState) {
-                    when (state) {
-                        MediaPlayerManager.PlaybackState.PLAYING -> {
-                            Log.d(TAG, "播放状态变化: 播放中")
-                            transportLastChange?.setPlaying()
-                        }
-
-                        MediaPlayerManager.PlaybackState.PAUSED -> {
-                            Log.d(TAG, "播放状态变化: 已暂停")
-                            transportLastChange?.setPaused()
-                        }
-
-                        MediaPlayerManager.PlaybackState.STOPPED -> {
-                            Log.d(TAG, "播放状态变化: 已停止")
-                            transportLastChange?.setStopped()
-                        }
-
-                        MediaPlayerManager.PlaybackState.ERROR -> {
-                            Log.d(TAG, "播放状态变化: 播放错误")
-                            transportLastChange?.setError()
-                        }
-                    }
-                }
-
-                override fun onPlaybackCompleted() {
-                    Log.d(TAG, "播放完成")
-                    transportLastChange?.setStopped()
-                }
-
-                override fun onError(errorMsg: String) {
-                    Log.e(TAG, "播放错误: $errorMsg")
-                    // 使用Handler确保在主线程上更新
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            serviceInstance?.currentTransportState = "STOPPED"
-                            Log.d(TAG, "播放错误，状态更新为停止")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "更新错误状态失败", e)
-                        }
-                    }
-                }
-
-                override fun onBufferingUpdate(percent: Int) {
-                    Log.e(TAG, "onBufferingUpdate: $percent")
-
-                }
-            })
-        }
     }
 
     /**
@@ -304,19 +212,9 @@ class MediaRendererService {
     fun pause(@UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes) {
         Log.d(TAG, "接收到暂停请求")
 
-        // 使用Handler确保在主线程上调用暂停
-        Handler(Looper.getMainLooper()).post {
-            try {
-                mediaPlayerManager?.pause()
 
-                // 更新状态
-                this@MediaRendererService.currentTransportState = "PAUSED_PLAYBACK"
-
-                Log.d(TAG, "已暂停播放")
-            } catch (e: Exception) {
-                Log.e(TAG, "暂停失败: ${e.message}", e)
-            }
-        }
+        // 更新状态
+        currentTransportState = "PAUSED_PLAYBACK"
     }
 
     /**
@@ -329,21 +227,10 @@ class MediaRendererService {
     @UpnpAction
     fun stop(@UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes) {
         Log.d(TAG, "接收到停止请求")
-
-        // 使用Handler确保在主线程上调用停止
-        Handler(Looper.getMainLooper()).post {
-            try {
-                mediaPlayerManager?.stop()
-
-                // 更新状态
-                this@MediaRendererService.currentTransportState = "STOPPED"
-
-                Log.d(TAG, "已停止播放")
-            } catch (e: Exception) {
-                Log.e(TAG, "停止失败: ${e.message}", e)
-            }
-        }
+        // 更新状态
+        currentTransportState = "STOPPED"
     }
+
 
     /**
      * 跳转动作
@@ -365,18 +252,10 @@ class MediaRendererService {
         this.unit = unit
         this.target = target
 
-        // 使用Handler确保在主线程上调用跳转
-        Handler(Looper.getMainLooper()).post {
-            try {
-                if (unit == "REL_TIME" || unit == "ABS_TIME") {
-                    val seconds = MediaRendererService.parseTimeString(target)
-                    mediaPlayerManager?.seekTo(seconds * 1000)
+        if (unit == "REL_TIME" || unit == "ABS_TIME") {
+            val seconds = parseTimeString(target)
 
-                    Log.d(TAG, "已跳转到 ${seconds}秒")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "跳转失败: ${e.message}", e)
-            }
+            Log.d(TAG, "已跳转到 ${seconds}秒")
         }
     }
 
@@ -401,8 +280,8 @@ class MediaRendererService {
     fun getPositionInfo(
         @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
     ): Array<String> {
-        val currentPosition = MediaRendererService.mediaPlayerManager?.getCurrentPosition() ?: 0
-        val formattedPosition = MediaRendererService.formatTime(currentPosition)
+        val currentPosition = 0
+        val formattedPosition = formatTime(currentPosition)
 
         this.absTime = formattedPosition
         this.relTime = formattedPosition
