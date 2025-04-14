@@ -284,8 +284,4 @@ class MediaPlayerManager(private val context: Context) {
             retryCount = 0
         }
     }
-
-    fun releasePlayer() {
-        release()
-    }
 }

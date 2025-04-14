@@ -27,9 +27,6 @@ import java.util.Locale
 )
 class MediaRendererService {
 
-    /** 日志标签 */
-    private val TAG = "MediaRendererService"
-
     init {
         // 在初始化时保存实例引用
         serviceInstance = this
@@ -37,7 +34,7 @@ class MediaRendererService {
     }
 
     companion object {
-        private const val TAG = "MediaRendererService_Static"
+        private const val TAG = "MediaRendererService"
 
         /** 应用上下文引用 */
         private var appContext: Context? = null
@@ -257,21 +254,6 @@ class MediaRendererService {
 
         // 重置播放状态
         this.currentTransportState = "STOPPED"
-
-        // 确保在主线程上设置媒体URI
-        Handler(Looper.getMainLooper()).post {
-            try {
-                Log.d(TAG, "准备设置媒体URI: $uri")
-
-                // 启动视频播放页面
-                appContext?.let { context ->
-                    VideoPlayerActivity.start(context, uri)
-                    Log.d(TAG, "已启动视频播放页面")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "设置媒体URI失败", e)
-            }
-        }
     }
 
     /**
@@ -401,14 +383,12 @@ class MediaRendererService {
     /** 获取传输信息 */
     @UpnpAction(out = [UpnpOutputArgument(name = "CurrentTransportState")])
     fun getTransportInfo(@UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes): String {
-        Log.d(TAG, "获取传输信息")
         return currentTransportState
     }
 
     /** 获取媒体信息 */
     @UpnpAction(out = [UpnpOutputArgument(name = "CurrentURI")])
     fun getMediaInfo(@UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes): String {
-        Log.d(TAG, "获取媒体信息")
         return currentURI
     }
 
