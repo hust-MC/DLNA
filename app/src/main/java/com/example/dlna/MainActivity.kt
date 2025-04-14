@@ -132,8 +132,9 @@ class MainActivity : Activity() {
      */
     private fun stopDLNAService() {
         Log.d(TAG, "停止DLNA服务")
-        val serviceIntent = Intent(this, DLNAService::class.java)
-        stopService(serviceIntent)
+        unbindService(connection)
+        bound = false
+        updateUI()
     }
 
     /**

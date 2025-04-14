@@ -57,7 +57,7 @@ class DLNAService : Service() {
 
     /** 本地设备实例 */
     private var localDevice: LocalDevice? = null
-    
+
     /** 媒体播放器管理器 */
     private lateinit var mediaPlayerManager: MediaPlayerManager
 
@@ -71,26 +71,28 @@ class DLNAService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "DLNA服务创建")
-        
+
         // 初始化MediaPlayerManager
         mediaPlayerManager = MediaPlayerManager(applicationContext)
-        
+
         // 初始化服务
         MediaRendererService.initialize(applicationContext)
-        
+
         // 将媒体播放器管理器设置到MediaRendererService中
         MediaRendererService.setMediaPlayerManager(mediaPlayerManager)
-        
+
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
-        
+
         // 创建唯一的设备标识符
         udn = UDN(UUID.randomUUID())
-        
+
         // 绑定UPnP服务
         serviceConnection = object : ServiceConnection {
             /** 服务连接成功回调 */
             override fun onServiceConnected(name: ComponentName, service: IBinder) {
+                Log.d(TAG, "Upnp Service connected")
+
                 upnpService = service as AndroidUpnpService
                 // 注册设备
                 createDevice()
@@ -98,7 +100,10 @@ class DLNAService : Service() {
 
             /** 服务断开连接回调 */
             override fun onServiceDisconnected(name: ComponentName) {
+                Log.d(TAG, "Upnp Service Disconnected")
+
                 upnpService = null
+                release()
             }
         }
 
@@ -155,9 +160,10 @@ class DLNAService : Service() {
 
             // 创建媒体渲染服务
             val binder = AnnotationLocalServiceBinder()
-            
+
             @Suppress("UNCHECKED_CAST")
-            val mediaRendererService = binder.read(MediaRendererService::class.java) as LocalService<MediaRendererService>
+            val mediaRendererService =
+                binder.read(MediaRendererService::class.java) as LocalService<MediaRendererService>
             mediaRendererService.apply {
                 initialize(this@DLNAService)
                 setManager(
@@ -189,23 +195,25 @@ class DLNAService : Service() {
     /** 服务销毁回调 */
     override fun onDestroy() {
         Log.d(TAG, "Destroying DLNA service")
-        
+
+        super.onDestroy()
+        release()
+    }
+
+    private fun release() {
         // 释放媒体播放器
         mediaPlayerManager.release()
-        
+
         // 移除所有本地和远程设备
         upnpService?.registry?.removeAllRemoteDevices()
         upnpService?.registry?.removeAllLocalDevices()
-        
+
         // 关闭UPnP服务
-        upnpService?.registry?.shutdown()
-        
-        // 解绑服务连接
-        serviceConnection?.let { 
-            unbindService(it)
-        }
-        
+        Thread {
+            upnpService?.registry?.shutdown()
+
+        }.start()
+
         stopForeground(true)
-        super.onDestroy()
     }
 } 
