@@ -56,6 +56,9 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
     // 本地持有的MediaPlayerManager实例
     private var mediaPlayerManager: MediaPlayerManager? = null
 
+    // 记录后台时的播放状态
+    private var wasPlayingBeforeBackground = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_video_player)
@@ -187,6 +190,12 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
         // 开始定时更新进度
         handler.post(updateSeekBarRunnable)
 
+        // 如果之前是播放状态，则恢复播放
+        if (wasPlayingBeforeBackground) {
+            mediaPlayerManager?.play()
+            wasPlayingBeforeBackground = false
+        }
+
         // 设置播放状态对应的按钮图标
         mediaPlayerManager?.let { player ->
             val isPlaying = player.getCurrentState() == MediaPlayerManager.PlaybackState.PLAYING
@@ -204,6 +213,14 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
         super.onPause()
         // 停止定时更新进度
         handler.removeCallbacks(updateSeekBarRunnable)
+        
+        // 记录当前播放状态并暂停
+        mediaPlayerManager?.let { player ->
+            wasPlayingBeforeBackground = player.getCurrentState() == MediaPlayerManager.PlaybackState.PLAYING
+            if (wasPlayingBeforeBackground) {
+                player.pause()
+            }
+        }
     }
 
     override fun onDestroy() {
