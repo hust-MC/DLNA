@@ -74,6 +74,12 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
 
         // 获取Surface准备渲染视频
         surfaceView.holder.addCallback(this)
+        
+        // 将MediaPlayerManager设置到MediaRendererService
+        MediaRendererService.setMediaPlayerManager(mediaPlayerManager!!)
+        
+        // 注册当前Activity到MediaRendererService
+        MediaRendererService.setPlayerActivity(this)
     }
 
     private fun initMediaPlayerManager() {
@@ -149,9 +155,10 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
 
     private fun formatTime(timeMs: Int): String {
         val totalSeconds = timeMs / 1000
-        val minutes = totalSeconds / 60
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
         val seconds = totalSeconds % 60
-        return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+        return String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
