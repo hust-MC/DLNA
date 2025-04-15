@@ -10,6 +10,7 @@ import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.SeekBar
 import android.widget.TextView
@@ -62,6 +63,9 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_video_player)
+
+        // 设置屏幕常亮
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // 隐藏状态栏和导航栏，实现全屏效果
         window.decorView.systemUiVisibility =
