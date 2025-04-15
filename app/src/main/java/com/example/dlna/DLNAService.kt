@@ -119,9 +119,7 @@ class DLNAService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID,
-                "DLNA服务通道",
-                NotificationManager.IMPORTANCE_LOW
+                CHANNEL_ID, "DLNA服务通道", NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "DLNA服务通知通道"
             }
@@ -134,16 +132,12 @@ class DLNAService : Service() {
     private fun createNotification(): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent,
-            PendingIntent.FLAG_IMMUTABLE
+            this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("DLNA 投屏服务")
-            .setContentText("正在运行中...")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(pendingIntent)
-            .build()
+        return NotificationCompat.Builder(this, CHANNEL_ID).setContentTitle("DLNA 投屏服务")
+            .setContentText("正在运行中...").setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentIntent(pendingIntent).build()
     }
 
     /** 创建UPnP设备 */
@@ -171,12 +165,17 @@ class DLNAService : Service() {
                 )
             }
 
+            // 创建渲染控制服务
+            @Suppress("UNCHECKED_CAST")
+            val renderingControlService =
+                binder.read(RenderingControlService::class.java) as LocalService<RenderingControlService>
+            renderingControlService.setManager(
+                DefaultServiceManager(renderingControlService, RenderingControlService::class.java)
+            )
+
             // 创建本地设备实例
             localDevice = LocalDevice(
-                identity,
-                type,
-                details,
-                arrayOf(mediaRendererService)
+                identity, type, details, arrayOf(mediaRendererService, renderingControlService)
             )
 
             // 注册设备到UPnP网络
@@ -210,9 +209,24 @@ class DLNAService : Service() {
 
         // 关闭UPnP服务
         Thread {
-            upnpService?.registry?.shutdown()
-
+            try {
+                upnpService?.registry?.shutdown()
+                Log.d(TAG, "UPnP服务已成功关闭")
+            } catch (e: Exception) {
+                Log.e(TAG, "关闭UPnP服务时出错", e)
+            }
         }.start()
+
+        // 解绑服务连接
+        serviceConnection?.let {
+            try {
+                applicationContext.unbindService(it)
+                Log.d(TAG, "服务连接已解绑")
+            } catch (e: Exception) {
+                Log.e(TAG, "解绑服务连接时出错", e)
+            }
+            serviceConnection = null
+        }
 
         stopForeground(true)
     }

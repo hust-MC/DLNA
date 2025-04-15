@@ -253,12 +253,7 @@ class MediaPlayerManager(private val context: Context) {
     }
 
     fun getCurrentPosition(): Int {
-        return if (Looper.myLooper() == Looper.getMainLooper()) {
-            exoPlayer?.currentPosition?.toInt() ?: 0
-        } else {
-            // 在非主线程上不能直接访问ExoPlayer
-            0
-        }
+        return exoPlayer?.currentPosition?.toInt() ?: 0
     }
 
     fun getDuration(): Int {

@@ -20,7 +20,7 @@ import java.util.Locale
  * 视频播放器Activity
  * 用于显示DLNA投屏的视频内容
  */
-class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
+class VideoPlayerActivity : Activity(),
     MediaPlayerManager.MediaStateListener {
 
     companion object {
@@ -57,8 +57,9 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
     // 本地持有的MediaPlayerManager实例
     private var mediaPlayerManager: MediaPlayerManager? = null
 
-    // 记录后台时的播放状态
+    // 记录后台时的播放状态和位置
     private var wasPlayingBeforeBackground = false
+    private var lastPlaybackPosition = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,13 +81,15 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
         setupListeners()
 
         // 获取Surface准备渲染视频
-        surfaceView.holder.addCallback(this)
-        
+        surfaceView.holder.addCallback(VideoSurfaceCallback())
+
         // 将MediaPlayerManager设置到MediaRendererService
         MediaRendererService.setMediaPlayerManager(mediaPlayerManager!!)
-        
+
         // 注册当前Activity到MediaRendererService
         MediaRendererService.setPlayerActivity(this)
+        // 将MediaPlayerManager设置到MediaRendererService
+        MediaRendererService.setMediaPlayerManager(mediaPlayerManager!!)
     }
 
     private fun initMediaPlayerManager() {
@@ -168,34 +171,15 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
         return String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
     }
 
-    override fun surfaceCreated(holder: SurfaceHolder) {
-        // 当Surface创建后，将其设置给MediaPlayerManager
-        mediaPlayerManager?.setSurface(holder.surface)
-
-        // 如果有视频URI，确保使用它来播放视频
-        videoUri?.let { uri ->
-            // 设置URI并播放
-            mediaPlayerManager?.setMediaURIAndPlay(uri)
-        }
-    }
-
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        // Surface尺寸或格式变化时，更新Surface
-        mediaPlayerManager?.setSurface(holder.surface)
-    }
-
-    override fun surfaceDestroyed(holder: SurfaceHolder) {
-        // Surface销毁时，清除播放器的Surface
-        mediaPlayerManager?.setSurface(null)
-    }
-
     override fun onResume() {
         super.onResume()
         // 开始定时更新进度
         handler.post(updateSeekBarRunnable)
 
-        // 如果之前是播放状态，则恢复播放
+        // 如果之前是播放状态，则恢复播放位置并继续播放
         if (wasPlayingBeforeBackground) {
+            // 恢复上次的播放位置
+            mediaPlayerManager?.seekTo(lastPlaybackPosition)
             mediaPlayerManager?.play()
             wasPlayingBeforeBackground = false
         }
@@ -217,11 +201,14 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
         super.onPause()
         // 停止定时更新进度
         handler.removeCallbacks(updateSeekBarRunnable)
-        
-        // 记录当前播放状态并暂停
+
+        // 记录当前播放状态和位置，并暂停
         mediaPlayerManager?.let { player ->
-            wasPlayingBeforeBackground = player.getCurrentState() == MediaPlayerManager.PlaybackState.PLAYING
+            wasPlayingBeforeBackground =
+                player.getCurrentState() == MediaPlayerManager.PlaybackState.PLAYING
             if (wasPlayingBeforeBackground) {
+                // 保存当前播放位置
+                lastPlaybackPosition = player.getCurrentPosition()
                 player.pause()
             }
         }
@@ -270,12 +257,60 @@ class VideoPlayerActivity : Activity(), SurfaceHolder.Callback,
         // 这里不需要处理，因为我们已经有了updateProgress方法
     }
 
-    override fun onError(message: String) {
+    override fun onError(errorMsg: String) {
         // 可以在这里添加错误处理逻辑，比如显示Toast提示用户
     }
 
     override fun onBufferingUpdate(percent: Int) {
         Log.d("MCLOG", "onBufferingUpdate: $percent")
 
+    }
+
+    // 用于DLNA控制器调用的方法
+    fun playFromDLNA() {
+        mediaPlayerManager?.play()
+        btnPlayPause.setImageResource(android.R.drawable.ic_media_pause)
+    }
+
+    fun pauseFromDLNA() {
+        mediaPlayerManager?.pause()
+        btnPlayPause.setImageResource(android.R.drawable.ic_media_play)
+    }
+
+    fun stopFromDLNA() {
+        mediaPlayerManager?.stop()
+        btnPlayPause.setImageResource(android.R.drawable.ic_media_play)
+    }
+
+    fun seekFromDLNA(positionMs: Int) {
+        mediaPlayerManager?.seekTo(positionMs)
+    }
+
+    private inner class VideoSurfaceCallback : SurfaceHolder.Callback {
+        override fun surfaceCreated(holder: SurfaceHolder) {
+            Log.d(TAG, "surfaceCreated")
+            // 当Surface创建后，将其设置给MediaPlayerManager
+            mediaPlayerManager?.setSurface(holder.surface)
+
+            // 如果有视频URI，确保使用它来播放视频
+            videoUri?.let { uri ->
+                // 设置URI并播放
+                mediaPlayerManager?.setMediaURIAndPlay(uri)
+            }
+        }
+
+        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+            Log.d(TAG, "surfaceChanged")
+
+            // Surface尺寸或格式变化时，更新Surface
+            mediaPlayerManager?.setSurface(holder.surface)
+        }
+
+        override fun surfaceDestroyed(holder: SurfaceHolder) {
+            Log.d(TAG, "surfaceDestroyed")
+
+            // Surface销毁时，清除播放器的Surface
+            mediaPlayerManager?.setSurface(null)
+        }
     }
 } 
