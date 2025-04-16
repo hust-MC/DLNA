@@ -14,4 +14,99 @@
 
     <string name="registeringDevice">Registering UPnP BinaryLight device…</string>
     <string name="createDeviceFailed">Creating of BinaryLight failed, check the log!</string>
+    
+    <!-- DLNA服务相关字符串 -->
+    <string name="dlna_service_channel_name">DLNA服务通道</string>
+    <string name="dlna_service_channel_description">DLNA服务通知通道</string>
+    <string name="dlna_service_notification_title">DLNA 投屏服务</string>
+    <string name="dlna_service_notification_text">正在运行中...</string>
+    
+    <!-- 设备信息相关字符串 -->
+    <string name="device_friendly_name">Max投屏器</string>
+    <string name="device_manufacturer">Max投屏器</string>
+    <string name="device_model_name">DLNA播放器</string>
+    <string name="device_model_description">Android DLNA媒体渲染器</string>
+    <string name="device_model_version">1.0</string>
+    
+    <!-- 日志相关字符串 -->
+    <string name="log_dlna_service_created">DLNA服务创建</string>
+    <string name="log_dlna_service_ensure_started">确保DLNA服务已启动</string>
+    <string name="log_dlna_service_start_request_sent">DLNA服务启动请求已发送</string>
+    <string name="log_dlna_service_already_running">DLNA服务已经运行</string>
+    <string name="log_dlna_service_binded">DLNA服务被绑定</string>
+    <string name="log_dlna_service_destroying">Destroying DLNA service</string>
+    <string name="log_dlna_service_start_command">DLNA服务启动命令</string>
+    <string name="log_upnp_service_connected">Upnp Service connected</string>
+    <string name="log_upnp_service_disconnected">Upnp Service Disconnected</string>
+    <string name="log_dlna_device_register_success">DLNA设备注册成功: %s</string>
+    <string name="log_dlna_device_register_failed">注册DLNA设备失败</string>
+    <string name="log_upnp_service_closed">UPnP服务已成功关闭</string>
+    <string name="log_upnp_service_close_error">关闭UPnP服务时出错</string>
+    <string name="log_service_connection_unbound">服务连接已解绑</string>
+    <string name="log_service_connection_unbind_error">解绑服务连接时出错</string>
+    
+    <!-- MediaRendererService相关字符串 -->
+    <string name="log_media_renderer_service_created">MediaRendererService实例已创建</string>
+    <string name="log_media_renderer_service_initialized">MediaRendererService已初始化</string>
+    <string name="log_lastchange_init_failed">初始化LastChange失败</string>
+    <string name="log_media_player_manager_set">MediaPlayerManager已设置</string>
+    <string name="log_current_player_activity_set">当前播放Activity已设置</string>
+    <string name="log_parse_time_string_failed">解析时间字符串失败: %s</string>
+    <string name="log_update_lastchange_status_error">更新LastChange状态出错</string>
+    <string name="log_update_playback_status_error">更新播放状态时出错</string>
+    <string name="log_xml_parser_external_entity_warning">XML解析器不支持禁用外部实体特性: %s</string>
+    <string name="log_xml_reader_external_entity_warning">XMLReader不支持禁用外部实体特性: %s</string>
+    <string name="log_create_xml_reader_failed">创建XMLReader失败</string>
+    
+    <!-- 播放控制相关字符串 -->
+    <string name="log_set_uri_request">接收到设置URI请求: %s</string>
+    <string name="log_have_media_player_manager">当前有MediaPlayerManager实例，更新URI</string>
+    <string name="log_have_player_activity">当前有播放Activity，将更新URI</string>
+    <string name="log_play_request">接收到播放请求，速度: %s, URI: %s</string>
+    <string name="log_dlna_service_ensured">已确保DLNA服务启动</string>
+    <string name="log_preparing_start_player">准备启动视频播放页面，URI: %s</string>
+    <string name="log_got_media_player_from_service">已从DLNA服务获取MediaPlayerManager</string>
+    <string name="log_player_activity_started">成功启动视频播放页面</string>
+    <string name="log_player_activity_start_failed">启动视频播放页面失败: %s</string>
+    <string name="log_no_uri_try_existing_player">没有URI，尝试在当前播放器中播放</string>
+    <string name="log_cannot_play_no_uri_no_player">无法播放：URI为空且没有可用的MediaPlayerManager</string>
+    <string name="log_play_failed">播放失败: %s</string>
+    <string name="log_pause_request">接收到暂停请求</string>
+    <string name="log_stop_request">接收到停止请求</string>
+    <string name="log_seek_request">接收到跳转请求: 单位=%s, 目标=%s</string>
+    <string name="log_seek_completed">已跳转到 %d秒</string>
+    <string name="log_get_position_info">获取位置信息: %s / %s</string>
+    <string name="log_playback_position_update">缓存的播放位置更新: %s / %s</string>
+    
+    <!-- VideoPlayerActivity相关字符串 -->
+    <string name="log_video_player_activity_oncreate">VideoPlayerActivity onCreate被调用</string>
+    <string name="log_received_video_uri">收到视频URI: %s</string>
+    <string name="log_get_media_player_from_service">从现有DLNAService获取MediaPlayerManager</string>
+    <string name="log_create_new_media_player">创建新的MediaPlayerManager实例</string>
+    <string name="log_video_player_activity_initialized">VideoPlayerActivity初始化完成</string>
+    <string name="log_surface_created">surfaceCreated</string>
+    <string name="log_init_play_video">初始化播放视频: %s</string>
+    <string name="log_video_already_initialized">视频已初始化，不重新播放</string>
+    <string name="log_cannot_play_empty_uri">无法播放：视频URI为空</string>
+    <string name="log_surface_changed">surfaceChanged</string>
+    <string name="log_surface_destroyed">surfaceDestroyed</string>
+    <string name="log_playback_completed">onPlaybackCompleted</string>
+    <string name="log_on_prepared">onPrepared: %d</string>
+    <string name="log_on_buffering_update">onBufferingUpdate: %d</string>
+    
+    <!-- MainActivity相关字符串 -->
+    <string name="log_main_activity_security_initialized">MainActivity.onCreate: 已初始化安全XML解析器设置</string>
+    <string name="log_improve_process_importance">提高应用进程重要性级别</string>
+    <string name="log_improve_process_importance_failed">尝试提高应用重要性失败</string>
+    <string name="log_main_activity_start_bind_service">MainActivity: 启动并绑定DLNA服务</string>
+    <string name="log_stop_dlna_service">停止DLNA服务</string>
+    <string name="dlna_service_running">DLNA服务状态：运行中</string>
+    <string name="dlna_service_stopped">DLNA服务状态：已停止</string>
+    <string name="start_service">启动服务</string>
+    <string name="stop_service">停止服务</string>
+    
+    <!-- RenderingControlService相关字符串 -->
+    <string name="log_set_media_player_manager">设置MediaPlayerManager</string>
+    <string name="log_set_volume">设置音量: %s</string>
+    <string name="log_set_mute">设置静音: %s</string>
 </resources>

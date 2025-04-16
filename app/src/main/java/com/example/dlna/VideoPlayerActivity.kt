@@ -85,9 +85,6 @@ class VideoPlayerActivity : Activity(),
         // 获取Surface准备渲染视频
         surfaceView.holder.addCallback(VideoSurfaceCallback())
 
-        // 将MediaPlayerManager设置到MediaRendererService
-        MediaRendererService.setMediaPlayerManager(mediaPlayerManager!!)
-
         // 注册当前Activity到MediaRendererService
         MediaRendererService.setPlayerActivity(this)
         // 将MediaPlayerManager设置到MediaRendererService

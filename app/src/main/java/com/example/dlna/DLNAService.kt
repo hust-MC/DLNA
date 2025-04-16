@@ -76,10 +76,7 @@ class DLNAService : Service() {
         mediaPlayerManager = MediaPlayerManager(applicationContext)
 
         // 初始化服务
-        MediaRendererService.initialize(applicationContext)
-
-        // 将媒体播放器管理器设置到MediaRendererService中
-//        MediaRendererService.setMediaPlayerManager(mediaPlayerManager)
+        initialize(applicationContext)
 
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
@@ -119,9 +116,11 @@ class DLNAService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "DLNA服务通道", NotificationManager.IMPORTANCE_LOW
+                CHANNEL_ID,
+                getString(R.string.dlna_service_channel_name),
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "DLNA服务通知通道"
+                description = getString(R.string.dlna_service_channel_description)
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
@@ -132,12 +131,19 @@ class DLNAService : Service() {
     private fun createNotification(): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
+            this, 0, notificationIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID).setContentTitle("DLNA 投屏服务")
-            .setContentText("正在运行中...").setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(pendingIntent).build()
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(R.string.dlna_service_notification_title))
+            .setContentText(getString(R.string.dlna_service_notification_text))
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setOngoing(true)
+            .build()
     }
 
     /** 创建UPnP设备 */
@@ -145,9 +151,13 @@ class DLNAService : Service() {
         try {
             val type = UDADeviceType("MediaRenderer", 1)
             val details = DeviceDetails(
-                "Max投屏器",  // 设备名称将显示在爱奇艺的设备列表中
-                ManufacturerDetails("Max投屏器"),
-                ModelDetails("DLNA播放器", "Android DLNA媒体渲染器", "1.0")
+                getString(R.string.device_friendly_name),  // 设备名称将显示在爱奇艺的设备列表中
+                ManufacturerDetails(getString(R.string.device_manufacturer)),
+                ModelDetails(
+                    getString(R.string.device_model_name),
+                    getString(R.string.device_model_description),
+                    getString(R.string.device_model_version)
+                )
             )
 
             val identity = DeviceIdentity(udn)
@@ -169,9 +179,18 @@ class DLNAService : Service() {
             @Suppress("UNCHECKED_CAST")
             val renderingControlService =
                 binder.read(RenderingControlService::class.java) as LocalService<RenderingControlService>
-            renderingControlService.setManager(
-                DefaultServiceManager(renderingControlService, RenderingControlService::class.java)
-            )
+            
+            // 创建一个自定义的ServiceManager，可以提供带有Context的RenderingControlService实例
+            val renderingControlManager = object : DefaultServiceManager<RenderingControlService>(
+                renderingControlService,
+                RenderingControlService::class.java
+            ) {
+                override fun createServiceInstance(): RenderingControlService {
+                    return RenderingControlService(applicationContext)
+                }
+            }
+            
+            renderingControlService.setManager(renderingControlManager)
 
             // 创建本地设备实例
             localDevice = LocalDevice(
@@ -180,9 +199,9 @@ class DLNAService : Service() {
 
             // 注册设备到UPnP网络
             upnpService?.registry?.addDevice(localDevice)
-            Log.d(TAG, "DLNA设备注册成功: ${details.friendlyName}")
+            Log.d(TAG, getString(R.string.log_dlna_device_register_success, details.friendlyName))
         } catch (e: Exception) {
-            Log.e(TAG, "注册DLNA设备失败", e)
+            Log.e(TAG, getString(R.string.log_dlna_device_register_failed), e)
         }
     }
 

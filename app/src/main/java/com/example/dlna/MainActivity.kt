@@ -10,7 +10,6 @@ import android.os.IBinder
 import android.util.Log
 import android.widget.Button
 import android.widget.TextView
-import com.example.dlna.util.SecurityAwareSAXParser
 
 /**
  * 主活动界面
@@ -99,10 +98,6 @@ class MainActivity : Activity() {
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // 初始化安全XML解析器设置
-        SecurityAwareSAXParser.newSecureFactory()
-        Log.d(TAG, "已初始化安全XML解析器设置")
         
         setContentView(R.layout.activity_main)
 

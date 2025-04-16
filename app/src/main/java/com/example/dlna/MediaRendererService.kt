@@ -1,6 +1,7 @@
 package com.example.dlna
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -19,6 +20,7 @@ import org.fourthline.cling.support.model.TransportState
 import java.util.Locale
 import java.util.Timer
 import java.util.TimerTask
+import java.lang.ref.WeakReference
 
 /**
  * UPnP媒体渲染服务
@@ -35,33 +37,56 @@ class MediaRendererService {
 
     init {
         // 在初始化时保存实例引用
-        serviceInstance = this
-        Log.d(TAG, "MediaRendererService实例已创建")
+        serviceInstance = WeakReference(this)
+        Log.d(TAG, getString(R.string.log_media_renderer_service_created))
     }
 
     companion object {
         private const val TAG = "MediaRendererService"
 
-        /** 应用上下文引用 */
-        private var appContext: Context? = null
+        /** 应用上下文引用 - 使用applicationContext防止泄漏 */
+        private var appContext: WeakReference<Context>? = null
 
         /** 服务实例引用 */
-        private var serviceInstance: MediaRendererService? = null
+        private var serviceInstance: WeakReference<MediaRendererService>? = null
 
         /** 状态变更对象引用 */
         private var lastChange: LastChange? = null
-        
-        /** 当前媒体播放器管理器 */
-        private var mediaPlayerManager: MediaPlayerManager? = null
-        
-        /** 当前活动的播放界面 */
-        private var currentPlayerActivity: VideoPlayerActivity? = null
-        
+
+        /** 当前媒体播放器管理器 - 使用弱引用避免内存泄漏 */
+        private var mediaPlayerManagerRef: WeakReference<MediaPlayerManager>? = null
+
+        /** 当前活动的播放界面 - 使用弱引用避免内存泄漏 */
+        private var playerActivityRef: WeakReference<VideoPlayerActivity>? = null
+
         /** 主线程Handler */
         private val mainHandler = Handler(Looper.getMainLooper())
-        
+
         /** 实例ID常量 */
         private val INSTANCE_ID = UnsignedIntegerFourBytes(0)
+
+        /**
+         * 获取Context
+         *
+         * @return applicationContext或null
+         */
+        private fun getContext(): Context? {
+            return appContext?.get()
+        }
+
+        /**
+         * 获取字符串资源
+         */
+        private fun getString(resId: Int): String {
+            return getContext()?.getString(resId) ?: ""
+        }
+
+        /**
+         * 获取格式化字符串资源
+         */
+        private fun getString(resId: Int, vararg formatArgs: Any): String {
+            return getContext()?.getString(resId, *formatArgs) ?: ""
+        }
 
         /**
          * 初始化服务
@@ -71,38 +96,56 @@ class MediaRendererService {
          * @param context 应用上下文
          */
         fun initialize(context: Context) {
-            appContext = context.applicationContext
-            Log.d(TAG, "MediaRendererService已初始化")
-            
+            appContext = WeakReference(context.applicationContext)
+            Log.d(TAG, getString(R.string.log_media_renderer_service_initialized))
+
             try {
                 // 初始化LastChange - 使用自定义的解析器实现来避免SAX特性不兼容问题
                 lastChange = LastChange(CustomAVTransportLastChangeParser())
-                
+
                 // 开始状态更新定时器
                 startStatusUpdateTimer()
             } catch (e: Exception) {
-                Log.e(TAG, "初始化LastChange失败", e)
+                Log.e(TAG, getString(R.string.log_lastchange_init_failed), e)
             }
         }
-        
+
         /**
          * 设置媒体播放器管理器
          *
          * @param manager 媒体播放器管理器实例
          */
         fun setMediaPlayerManager(manager: MediaPlayerManager) {
-            mediaPlayerManager = manager
-            Log.d(TAG, "MediaPlayerManager已设置")
+            mediaPlayerManagerRef = WeakReference(manager)
+            Log.d(TAG, getString(R.string.log_media_player_manager_set))
         }
-        
+
+        /**
+         * 获取媒体播放器管理器
+         *
+         * @return 媒体播放器管理器或null
+         */
+        fun getMediaPlayerManager(): MediaPlayerManager? {
+            return mediaPlayerManagerRef?.get()
+        }
+
         /**
          * 设置当前播放Activity
          *
          * @param activity 视频播放Activity实例
          */
         fun setPlayerActivity(activity: VideoPlayerActivity) {
-            currentPlayerActivity = activity
-            Log.d(TAG, "当前播放Activity已设置")
+            playerActivityRef = WeakReference(activity)
+            Log.d(TAG, getString(R.string.log_current_player_activity_set))
+        }
+
+        /**
+         * 获取当前播放Activity
+         *
+         * @return 播放Activity或null
+         */
+        fun getPlayerActivity(): VideoPlayerActivity? {
+            return playerActivityRef?.get()
         }
 
         /**
@@ -135,14 +178,14 @@ class MediaRendererService {
                     return (hours * 3600 + minutes * 60 + seconds) * 1000
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "解析时间字符串失败: $timeStr", e)
+                Log.e(TAG, getString(R.string.log_parse_time_string_failed, timeStr), e)
             }
             return 0
         }
-        
+
         // 状态更新定时器
         private var statusUpdateTimer: Timer? = null
-        
+
         /**
          * 开始状态更新定时器
          * 用于定期更新播放状态和进度信息
@@ -157,67 +200,77 @@ class MediaRendererService {
                 }, 0, 1000) // 每秒更新一次
             }
         }
-        
+
         /**
          * 更新播放状态和进度
          */
         private fun updatePlaybackStatus() {
             try {
-                serviceInstance?.let { service ->
-                    // 使用Handler确保在主线程中获取播放状态
-                    mainHandler.post {
-                        mediaPlayerManager?.let { player ->
-                            // 更新播放状态
-                            val state = when (player.getCurrentState()) {
-                                MediaPlayerManager.PlaybackState.PLAYING -> {
-                                    service.currentTransportState = "PLAYING"
-                                    TransportState.PLAYING
-                                }
-                                MediaPlayerManager.PlaybackState.PAUSED -> {
-                                    service.currentTransportState = "PAUSED_PLAYBACK"
-                                    TransportState.PAUSED_PLAYBACK
-                                }
-                                MediaPlayerManager.PlaybackState.STOPPED -> {
-                                    service.currentTransportState = "STOPPED"
-                                    TransportState.STOPPED
-                                }
-                                MediaPlayerManager.PlaybackState.ERROR -> {
-                                    service.currentTransportState = "ERROR"
-                                    TransportState.STOPPED
-                                }
-                                else -> TransportState.STOPPED
-                            }
-                            
-                            // 更新LastChange状态
-                            try {
-                                lastChange?.let { lc ->
-                                    service.lastChange = lc.toString()
-                                }
-                            } catch (e: Exception) {
-                                Log.e(TAG, "更新LastChange状态出错", e)
-                            }
-                            
-                            // 更新进度信息
-                            val position = player.getCurrentPosition()
-                            val duration = player.getDuration()
-                            
-                            if (duration > 0) {
-                                val formattedDuration = formatTime(duration)
-                                service.mediaDuration = formattedDuration
-                                service.currentMediaDuration = formattedDuration
-                                service.currentTrackDuration = formattedDuration
-                                
-                                val formattedPosition = formatTime(position)
-                                service.absTime = formattedPosition
-                                service.relTime = formattedPosition
-                                
-                                Log.d(TAG, "缓存的播放位置更新: $formattedPosition / $formattedDuration")
-                            }
+                val service = serviceInstance?.get() ?: return
+                val player = mediaPlayerManagerRef?.get() ?: return
+
+                // 使用Handler确保在主线程中获取播放状态
+                mainHandler.post {
+                    // 更新播放状态
+                    val state = when (player.getCurrentState()) {
+                        MediaPlayerManager.PlaybackState.PLAYING -> {
+                            service.currentTransportState = "PLAYING"
+                            TransportState.PLAYING
                         }
+
+                        MediaPlayerManager.PlaybackState.PAUSED -> {
+                            service.currentTransportState = "PAUSED_PLAYBACK"
+                            TransportState.PAUSED_PLAYBACK
+                        }
+
+                        MediaPlayerManager.PlaybackState.STOPPED -> {
+                            service.currentTransportState = "STOPPED"
+                            TransportState.STOPPED
+                        }
+
+                        MediaPlayerManager.PlaybackState.ERROR -> {
+                            service.currentTransportState = "ERROR"
+                            TransportState.STOPPED
+                        }
+
+                        else -> TransportState.STOPPED
+                    }
+
+                    // 更新LastChange状态
+                    try {
+                        lastChange?.let { lc ->
+                            service.lastChange = lc.toString()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, getString(R.string.log_update_lastchange_status_error), e)
+                    }
+
+                    // 更新进度信息
+                    val position = player.getCurrentPosition()
+                    val duration = player.getDuration()
+
+                    if (duration > 0) {
+                        val formattedDuration = formatTime(duration)
+                        service.mediaDuration = formattedDuration
+                        service.currentMediaDuration = formattedDuration
+                        service.currentTrackDuration = formattedDuration
+
+                        val formattedPosition = formatTime(position)
+                        service.absTime = formattedPosition
+                        service.relTime = formattedPosition
+
+                        Log.d(
+                            TAG,
+                            getString(
+                                R.string.log_playback_position_update,
+                                formattedPosition,
+                                formattedDuration
+                            )
+                        )
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "更新播放状态时出错", e)
+                Log.e(TAG, getString(R.string.log_update_playback_status_error), e)
             }
         }
 
@@ -227,36 +280,48 @@ class MediaRendererService {
         private class CustomAVTransportLastChangeParser : AVTransportLastChangeParser() {
             // 禁用架构验证
             override fun getSchemaSources() = null
-            
+
             // 重写create方法完全替换原始SAXParser中的实现，避免设置不兼容的XML解析器特性
             override fun create(): org.xml.sax.XMLReader {
                 try {
                     val factory = javax.xml.parsers.SAXParserFactory.newInstance()
                     factory.isNamespaceAware = true
-                    
+
                     // 不尝试设置不兼容的特性http://apache.org/xml/features/disallow-doctype-decl
                     // 但仍设置其他重要安全特性（如果支持）
                     try {
                         // 禁用外部实体处理，防止XXE攻击
-                        factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
-                        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                        factory.setFeature(
+                            "http://xml.org/sax/features/external-general-entities",
+                            false
+                        )
+                        factory.setFeature(
+                            "http://xml.org/sax/features/external-parameter-entities",
+                            false
+                        )
                     } catch (e: Exception) {
                         // 如果特性不被支持，记录警告但继续执行
                         Log.w(TAG, "XML解析器不支持禁用外部实体特性: ${e.message}")
                     }
-                    
+
                     // 创建XMLReader而不设置不兼容的特性
                     val reader = factory.newSAXParser().xmlReader
-                    
+
                     // 设置XMLReader的特性（如果支持）
                     try {
-                        reader.setFeature("http://xml.org/sax/features/external-general-entities", false)
-                        reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                        reader.setFeature(
+                            "http://xml.org/sax/features/external-general-entities",
+                            false
+                        )
+                        reader.setFeature(
+                            "http://xml.org/sax/features/external-parameter-entities",
+                            false
+                        )
                     } catch (e: Exception) {
                         // 如果特性不被支持，记录警告但继续执行
                         Log.w(TAG, "XMLReader不支持禁用外部实体特性: ${e.message}")
                     }
-                    
+
                     return reader
                 } catch (e: Exception) {
                     // 如果创建失败，记录错误并抛出运行时异常
@@ -350,7 +415,7 @@ class MediaRendererService {
         @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
         @UpnpInputArgument(name = "Speed") speed: String
     ) {
-        Log.d(TAG, "接收到播放请求，速度: $speed")
+        Log.d(TAG, getString(R.string.log_play_request, speed, currentURI))
         this.speed = speed
 
         // 更新状态
@@ -362,17 +427,24 @@ class MediaRendererService {
                 // 如果尚未打开播放页面，则启动视频播放页面
                 if (currentURI.isNotEmpty()) {
                     appContext?.let { context ->
-                        VideoPlayerActivity.start(context, currentURI)
+                        getContext()?.let { VideoPlayerActivity.start(it, currentURI) }
                         Log.d(TAG, "播放时启动视频播放页面")
                     }
                 } else {
-                    // 如果已经有播放页面，则通知它播放
-                    mediaPlayerManager?.play()
-                }
+                    val player = getMediaPlayerManager()
+                    val activity = getPlayerActivity()
 
-                Log.d(TAG, "已开始播放")
+                    if (player != null) {
+                        // 如果URI为空但已经有播放器实例，尝试通过现有播放器播放
+                        Log.d(TAG, getString(R.string.log_no_uri_try_existing_player))
+                        player.play()
+                        activity?.playFromDLNA()
+                    } else {
+                        Log.e(TAG, getString(R.string.log_cannot_play_no_uri_no_player))
+                    }
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "播放失败: ${e.message}", e)
+                Log.e(TAG, getString(R.string.log_play_failed, e.message ?: ""), e)
             }
         }
     }
@@ -390,10 +462,10 @@ class MediaRendererService {
 
         // 更新状态
         currentTransportState = "PAUSED_PLAYBACK"
-        
+
         // 在主线程上暂停播放
         Handler(Looper.getMainLooper()).post {
-            mediaPlayerManager?.pause()
+            mediaPlayerManagerRef?.get()?.pause()
         }
     }
 
@@ -409,10 +481,10 @@ class MediaRendererService {
         Log.d(TAG, "接收到停止请求")
         // 更新状态
         currentTransportState = "STOPPED"
-        
+
         // 在主线程上停止播放
         Handler(Looper.getMainLooper()).post {
-            mediaPlayerManager?.stop()
+            mediaPlayerManagerRef?.get()?.stop()
         }
     }
 
@@ -439,13 +511,13 @@ class MediaRendererService {
 
         if (unit == "REL_TIME" || unit == "ABS_TIME") {
             val timeMs = parseTimeString(target)
-            
+
             // 在主线程上执行跳转
             Handler(Looper.getMainLooper()).post {
-                mediaPlayerManager?.seekTo(timeMs)
+                mediaPlayerManagerRef?.get()?.seekTo(timeMs)
             }
 
-            Log.d(TAG, "已跳转到 ${timeMs/1000}秒")
+            Log.d(TAG, "已跳转到 ${timeMs / 1000}秒")
         }
     }
 

@@ -57,7 +57,7 @@ class RenderingControlService(private val context: Context) {
      * @param manager MediaPlayerManager实例
      */
     fun setMediaPlayerManager(manager: MediaPlayerManager) {
-        Log.d(TAG, "设置MediaPlayerManager")
+        Log.d(TAG, context.getString(R.string.log_set_media_player_manager))
         mediaPlayerManager = manager
     }
 
@@ -68,7 +68,7 @@ class RenderingControlService(private val context: Context) {
         @UpnpInputArgument(name = "Channel") channel: String,
         @UpnpInputArgument(name = "DesiredVolume") desiredVolume: UnsignedIntegerTwoBytes
     ) {
-        Log.d(TAG, "设置音量: $desiredVolume")
+        Log.d(TAG, context.getString(R.string.log_set_volume, desiredVolume))
         this.volume = desiredVolume
         
         // MediaPlayerManager中没有setVolume方法，所以我们这里只存储值，不执行操作
@@ -82,7 +82,7 @@ class RenderingControlService(private val context: Context) {
         @UpnpInputArgument(name = "Channel") channel: String,
         @UpnpInputArgument(name = "DesiredMute") desiredMute: Boolean
     ) {
-        Log.d(TAG, "设置静音: $desiredMute")
+        Log.d(TAG, context.getString(R.string.log_set_mute, desiredMute.toString()))
         this.mute = desiredMute
         
         // MediaPlayerManager中没有setVolume方法，所以我们这里只存储值，不执行操作
