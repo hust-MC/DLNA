@@ -45,7 +45,7 @@ class VideoPlayerActivity : Activity(),
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnBack: ImageButton
 
-    private var videoUri: String? = null
+    private var videoUri: String = ""
     private val handler = Handler(Looper.getMainLooper())
     private val updateSeekBarRunnable = object : Runnable {
         override fun run() {
@@ -59,7 +59,9 @@ class VideoPlayerActivity : Activity(),
 
     // 记录后台时的播放状态和位置
     private var wasPlayingBeforeBackground = false
-    private var lastPlaybackPosition = 0
+
+    // 添加一个标志，记录视频是否已经初始化过
+    private var isVideoInitialized = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,7 +74,7 @@ class VideoPlayerActivity : Activity(),
         window.decorView.systemUiVisibility =
             (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
 
-        videoUri = intent.getStringExtra(EXTRA_VIDEO_URI)
+        videoUri = intent.getStringExtra(EXTRA_VIDEO_URI) ?: ""
 
         // 初始化MediaPlayerManager
         initMediaPlayerManager()
@@ -178,8 +180,6 @@ class VideoPlayerActivity : Activity(),
 
         // 如果之前是播放状态，则恢复播放位置并继续播放
         if (wasPlayingBeforeBackground) {
-            // 恢复上次的播放位置
-            mediaPlayerManager?.seekTo(lastPlaybackPosition)
             mediaPlayerManager?.play()
             wasPlayingBeforeBackground = false
         }
@@ -204,11 +204,9 @@ class VideoPlayerActivity : Activity(),
 
         // 记录当前播放状态和位置，并暂停
         mediaPlayerManager?.let { player ->
-            wasPlayingBeforeBackground =
-                player.getCurrentState() == MediaPlayerManager.PlaybackState.PLAYING
+            wasPlayingBeforeBackground = player.getCurrentState() == MediaPlayerManager.PlaybackState.PLAYING
             if (wasPlayingBeforeBackground) {
                 // 保存当前播放位置
-                lastPlaybackPosition = player.getCurrentPosition()
                 player.pause()
             }
         }
@@ -292,10 +290,11 @@ class VideoPlayerActivity : Activity(),
             // 当Surface创建后，将其设置给MediaPlayerManager
             mediaPlayerManager?.setSurface(holder.surface)
 
-            // 如果有视频URI，确保使用它来播放视频
-            videoUri?.let { uri ->
+            // 只有在第一次初始化时才设置媒体URI并播放
+            if (!isVideoInitialized) {
                 // 设置URI并播放
-                mediaPlayerManager?.setMediaURIAndPlay(uri)
+                mediaPlayerManager?.setMediaURIAndPlay(videoUri)
+                isVideoInitialized = true
             }
         }
 
