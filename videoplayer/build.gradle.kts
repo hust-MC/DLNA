@@ -30,8 +30,8 @@ dependencies {
 
     implementation("androidx.core:core-ktx:1.9.0")
 
-    // ExoPlayer依赖
-    implementation("com.google.android.exoplayer:exoplayer-core:2.19.1")
-    implementation("com.google.android.exoplayer:exoplayer-ui:2.19.1")
-    implementation("com.google.android.exoplayer:exoplayer-hls:2.19.1") // HLS支持(M3U8)
+    // ExoPlayer依赖 已被迁移到 androidx.media3
+    implementation("androidx.media3:media3-exoplayer:1.1.1")
+    implementation("androidx.media3:media3-ui:1.1.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.1.1")
 }

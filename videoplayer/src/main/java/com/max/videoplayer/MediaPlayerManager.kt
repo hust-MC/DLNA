@@ -5,11 +5,14 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Surface
-import com.google.android.exoplayer2.ExoPlayer
-import com.google.android.exoplayer2.MediaItem
-import com.google.android.exoplayer2.PlaybackException
-import com.google.android.exoplayer2.Player
-import com.google.android.exoplayer2.source.hls.HlsMediaSource
+import androidx.annotation.OptIn
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import java.util.Timer
 import java.util.TimerTask
 
@@ -18,9 +21,11 @@ import java.util.TimerTask
  * 使用ExoPlayer替代MediaPlayer，提供更好的M3U8支持
  * @author Max
  */
+@OptIn(UnstableApi::class)
 class MediaPlayerManager(private val context: Context) {
     companion object {
         private const val TAG = "MediaPlayerManager"
+        private const val PROGRESS_UPDATE_INTERVAL_MS = 1000L
     }
 
     private var exoPlayer: ExoPlayer? = null
@@ -28,11 +33,22 @@ class MediaPlayerManager(private val context: Context) {
     private var currentState = PlaybackState.STOPPED
     private var currentUri: String = ""
     private var duration: Int = 0
-    private var progressTimer: Timer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var retryCount = 0
     private var surface: Surface? = null
     private var shouldAutoPlay: Boolean = false
+
+    // 使用 Handler 替代 Timer 来更新播放进度，避免创建新线程
+    private val progressUpdateRunnable = object : Runnable {
+        override fun run() {
+            exoPlayer?.let { player ->
+                if (player.isPlaying) {
+                    val position = player.currentPosition.toInt()
+                    stateListener?.onProgressUpdate(position)
+                }
+            }
+            mainHandler.postDelayed(this, PROGRESS_UPDATE_INTERVAL_MS)
+        }
+    }
 
     enum class PlaybackState {
         STOPPED, PLAYING, PAUSED, ERROR
@@ -69,7 +85,6 @@ class MediaPlayerManager(private val context: Context) {
     private fun setMediaURI(uri: String) {
         try {
             currentUri = uri
-            retryCount = 0
             Log.d(TAG, "设置媒体URI: $uri")
 
             // 在主线程上释放播放器和设置新的媒体源
@@ -95,50 +110,54 @@ class MediaPlayerManager(private val context: Context) {
                 return
             }
 
-            // 创建ExoPlayer实例
-            exoPlayer = ExoPlayer.Builder(context).build()
+            // Media3推荐的做法：使用DefaultMediaSourceFactory自动处理媒体源
+            // 并将 MediaCacheFactory 中创建好的带缓存的 DataSource.Factory 设置进去
+            val mediaSourceFactory = DefaultMediaSourceFactory(context)
+                .setDataSourceFactory(MediaCacheFactory.getCacheFactory(context))
+
+            // 创建ExoPlayer实例，并传入 MediaSourceFactory
+            exoPlayer = ExoPlayer.Builder(context)
+                .setMediaSourceFactory(mediaSourceFactory)
+                .build()
 
             // 设置播放状态监听
             exoPlayer?.addListener(object : Player.Listener {
+                // Player.Listener 的回调默认在主线程执行，无需额外切换
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    runOnMainThread {
-                        when (playbackState) {
-                            Player.STATE_READY -> {
-                                Log.d(TAG, "ExoPlayer状态: 就绪")
+                    when (playbackState) {
+                        Player.STATE_READY -> {
+                            Log.d(TAG, "ExoPlayer状态: 就绪")
 
-                                // 获取并报告媒体时长
-                                val durationMs = exoPlayer?.duration?.toInt() ?: 0
-                                if (durationMs > 0) {
-                                    duration = durationMs
-                                    stateListener?.onPrepared(durationMs)
-                                }
-
-                                // 如果设置了自动播放
-                                if (shouldAutoPlay) {
-                                    exoPlayer?.play()
-                                    currentState = PlaybackState.PLAYING
-                                    stateListener?.onPlaybackStateChanged(currentState)
-                                    startProgressTimer()
-                                    shouldAutoPlay = false
-                                }
+                            // 获取并报告媒体时长
+                            val durationMs = exoPlayer?.duration?.toInt() ?: 0
+                            if (durationMs > 0) {
+                                duration = durationMs
+                                stateListener?.onPrepared(durationMs)
                             }
 
-                            Player.STATE_ENDED -> {
-                                Log.d(TAG, "ExoPlayer状态: 播放结束")
-                                currentState = PlaybackState.STOPPED
-                                stateListener?.onPlaybackStateChanged(currentState)
-                                stateListener?.onPlaybackCompleted()
-                                stopProgressTimer()
+                            // 如果设置了自动播放
+                            if (shouldAutoPlay) {
+                                exoPlayer?.play()
+                                // isPlayingChanged回调会处理播放状态和进度条
+                                shouldAutoPlay = false
                             }
+                        }
 
-                            Player.STATE_BUFFERING -> {
-                                Log.d(TAG, "ExoPlayer状态: 缓冲中")
-                                stateListener?.onBufferingUpdate(50) // 缓冲中
-                            }
+                        Player.STATE_ENDED -> {
+                            Log.d(TAG, "ExoPlayer状态: 播放结束")
+                            currentState = PlaybackState.STOPPED
+                            stateListener?.onPlaybackStateChanged(currentState)
+                            stateListener?.onPlaybackCompleted()
+                            stopProgressTimer()
+                        }
 
-                            Player.STATE_IDLE -> {
-                                Log.d(TAG, "ExoPlayer状态: 空闲")
-                            }
+                        Player.STATE_BUFFERING -> {
+                            Log.d(TAG, "ExoPlayer状态: 缓冲中")
+                            stateListener?.onBufferingUpdate(50) // 缓冲中
+                        }
+
+                        Player.STATE_IDLE -> {
+                            Log.d(TAG, "ExoPlayer状态: 空闲")
                         }
                     }
                 }
@@ -149,12 +168,14 @@ class MediaPlayerManager(private val context: Context) {
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    runOnMainThread {
-                        if (isPlaying) {
-                            currentState = PlaybackState.PLAYING
-                            stateListener?.onPlaybackStateChanged(currentState)
-                            startProgressTimer()
-                        } else if (exoPlayer?.playbackState == Player.STATE_READY) {
+                    if (isPlaying) {
+                        currentState = PlaybackState.PLAYING
+                        stateListener?.onPlaybackStateChanged(currentState)
+                        startProgressTimer()
+                    } else {
+                        // 播放器不在播放状态，可能是暂停或已结束
+                        // STATE_ENDED会处理停止状态，这里只处理暂停
+                        if (exoPlayer?.playbackState == Player.STATE_READY) {
                             currentState = PlaybackState.PAUSED
                             stateListener?.onPlaybackStateChanged(currentState)
                             stopProgressTimer()
@@ -168,13 +189,9 @@ class MediaPlayerManager(private val context: Context) {
                 exoPlayer?.setVideoSurface(surface)
             }
 
-            // 设置媒体源并准备播放
-            val mediaSource: HlsMediaSource =
-                HlsMediaSource.Factory(MediaCacheFactory.getCacheFactory(context))
-                    .setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(uri))
-//            val mediaSource: ProgressiveMediaSource = ProgressiveMediaSource.Factory(MediaCacheFactory .getCacheFactory(context.applicationContext)).createMediaSource(MediaItem.fromUri(uri))
-
-            exoPlayer?.setMediaSource(mediaSource)
+            // 设置媒体项，ExoPlayer会使用MediaSourceFactory自动创建合适的MediaSource
+            val mediaItem = MediaItem.fromUri(uri)
+            exoPlayer?.setMediaItem(mediaItem)
             exoPlayer?.prepare()
         } catch (e: Exception) {
             handleError(e)
@@ -192,26 +209,13 @@ class MediaPlayerManager(private val context: Context) {
     }
 
     private fun startProgressTimer() {
+        // 移除旧的回调，防止重复
         stopProgressTimer()
-        progressTimer = Timer().apply {
-            schedule(object : TimerTask() {
-                override fun run() {
-                    runOnMainThread {
-                        exoPlayer?.let { player ->
-                            if (player.isPlaying) {
-                                val position = player.currentPosition.toInt()
-                                stateListener?.onProgressUpdate(position)
-                            }
-                        }
-                    }
-                }
-            }, 0, 1000)
-        }
+        mainHandler.post(progressUpdateRunnable)
     }
 
     private fun stopProgressTimer() {
-        progressTimer?.cancel()
-        progressTimer = null
+        mainHandler.removeCallbacks(progressUpdateRunnable)
     }
 
     /**
@@ -276,7 +280,6 @@ class MediaPlayerManager(private val context: Context) {
             exoPlayer?.release()
             exoPlayer = null
             currentState = PlaybackState.STOPPED
-            retryCount = 0
         }
     }
 }
