@@ -14,6 +14,7 @@ import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.SeekBar
 import android.widget.TextView
+import com.max.videoplayer.MediaPlayerManager
 import java.util.Locale
 
 /**

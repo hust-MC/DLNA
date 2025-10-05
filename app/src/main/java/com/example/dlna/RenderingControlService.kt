@@ -11,7 +11,7 @@ import org.fourthline.cling.binding.annotations.UpnpServiceType
 import org.fourthline.cling.binding.annotations.UpnpStateVariable
 import org.fourthline.cling.model.types.UnsignedIntegerFourBytes
 import org.fourthline.cling.model.types.UnsignedIntegerTwoBytes
-import com.example.dlna.MediaPlayerManager
+import com.max.videoplayer.MediaPlayerManager
 
 /**
  * UPnP渲染控制服务

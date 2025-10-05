@@ -1,4 +1,4 @@
-package com.example.dlna
+package com.max.videoplayer
 
 import android.content.Context
 import android.os.Handler
@@ -10,11 +10,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import java.util.Timer
-import java.util.TimerTask
 
 /**
  * 媒体播放器管理类
