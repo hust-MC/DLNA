@@ -15,6 +15,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.dlna.MediaRendererService.Companion.initialize
+import com.max.videoplayer.MediaPlayerManager
 import org.fourthline.cling.android.AndroidUpnpService
 import org.fourthline.cling.android.AndroidUpnpServiceImpl
 import org.fourthline.cling.binding.annotations.AnnotationLocalServiceBinder
@@ -27,6 +28,8 @@ import org.fourthline.cling.model.meta.ManufacturerDetails
 import org.fourthline.cling.model.meta.ModelDetails
 import org.fourthline.cling.model.types.UDADeviceType
 import org.fourthline.cling.model.types.UDN
+import org.fourthline.cling.support.avtransport.lastchange.AVTransportLastChangeParser
+import org.fourthline.cling.support.lastchange.LastChangeAwareServiceManager
 import java.util.UUID
 
 /**
@@ -60,6 +63,12 @@ class DLNAService : Service() {
 
     /** 媒体播放器管理器 */
     private lateinit var mediaPlayerManager: MediaPlayerManager
+    
+    /** AVTransport 服务管理器，用于定期触发 LastChange 事件 */
+    private var mediaRendererServiceManager: LastChangeAwareServiceManager<MediaRendererService>? = null
+    
+    /** LastChange 事件触发定时器 */
+    private var lastChangeTimer: java.util.Timer? = null
 
     /** 本地Binder类 */
     inner class LocalBinder : Binder() {
@@ -168,12 +177,22 @@ class DLNAService : Service() {
             @Suppress("UNCHECKED_CAST")
             val mediaRendererService =
                 binder.read(MediaRendererService::class.java) as LocalService<MediaRendererService>
+            
+            // 使用 LastChangeAwareServiceManager 来支持 LastChange 事件机制
+            val lastChangeParser = CustomAVTransportLastChangeParser()
+            val mediaRendererServiceManager = LastChangeAwareServiceManager(
+                mediaRendererService,
+                MediaRendererService::class.java,
+                lastChangeParser
+            )
+            
             mediaRendererService.apply {
                 initialize(this@DLNAService)
-                setManager(
-                    DefaultServiceManager(mediaRendererService, MediaRendererService::class.java)
-                )
+                setManager(mediaRendererServiceManager)
             }
+            
+            // 保存 manager 引用以便定期触发 LastChange 事件
+            this.mediaRendererServiceManager = mediaRendererServiceManager
 
             // 创建渲染控制服务
             @Suppress("UNCHECKED_CAST")
@@ -200,9 +219,32 @@ class DLNAService : Service() {
             // 注册设备到UPnP网络
             upnpService?.registry?.addDevice(localDevice)
             Log.d(TAG, getString(R.string.log_dlna_device_register_success, details.friendlyName))
+            
+            // 启动定时器，定期触发 LastChange 事件（每秒一次）
+            startLastChangeTimer()
         } catch (e: Exception) {
             Log.e(TAG, getString(R.string.log_dlna_device_register_failed), e)
         }
+    }
+    
+    /**
+     * 启动 LastChange 事件触发定时器
+     * 定期调用 fireLastChange() 将累积的状态变化推送给订阅者
+     */
+    private fun startLastChangeTimer() {
+        lastChangeTimer?.cancel()
+        lastChangeTimer = java.util.Timer().apply {
+            schedule(object : java.util.TimerTask() {
+                override fun run() {
+                    try {
+                        mediaRendererServiceManager?.fireLastChange()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "触发 LastChange 事件失败", e)
+                    }
+                }
+            }, 1000, 1000) // 初始延迟1秒，然后每秒执行一次
+        }
+        Log.d(TAG, "LastChange 事件触发定时器已启动")
     }
 
     /** 服务绑定回调 */
@@ -219,6 +261,10 @@ class DLNAService : Service() {
     }
 
     private fun release() {
+        // 停止 LastChange 定时器
+        lastChangeTimer?.cancel()
+        lastChangeTimer = null
+        
         // 释放媒体播放器
         mediaPlayerManager.release()
 
