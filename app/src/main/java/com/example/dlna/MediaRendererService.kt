@@ -375,7 +375,7 @@ class MediaRendererService : LastChangeDelegator {
     /**
      * 获取LastChange对象（LastChangeDelegator接口要求）
      * 
-     * LastChangeAwareServiceManager会调用此方法获取LastChange实例，
+     * LastChangeAwareServiceManager会调用·此方法获取LastChange实例，
      * 用于触发GENA事件推送
      */
     override fun getLastChange() = lastChangeManager
