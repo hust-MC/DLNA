@@ -48,6 +48,10 @@ class VideoPlayerActivity : Activity(),
 
     private var videoUri: String = ""
     private val handler = Handler(Looper.getMainLooper())
+    
+    // 视频尺寸
+    private var videoWidth: Int = 0
+    private var videoHeight: Int = 0
     private val updateSeekBarRunnable = object : Runnable {
         override fun run() {
             updateProgress()
@@ -246,7 +250,6 @@ class VideoPlayerActivity : Activity(),
 
     override fun onPrepared(durationMs: Int) {
         Log.d(TAG, "onPrepared: $durationMs")
-
     }
 
     override fun onProgressUpdate(positionMs: Int) {
@@ -258,8 +261,52 @@ class VideoPlayerActivity : Activity(),
     }
 
     override fun onBufferingUpdate(percent: Int) {
-        Log.d("MCLOG", "onBufferingUpdate: $percent")
-
+        Log.d(TAG, "onBufferingUpdate: $percent")
+    }
+    
+    override fun onVideoSizeChanged(width: Int, height: Int) {
+        Log.d(TAG, "视频尺寸变化: ${width}x${height}")
+        videoWidth = width
+        videoHeight = height
+        
+        // 调整SurfaceView大小以适配视频，保持宽高比不拉伸
+        runOnUiThread {
+            adjustSurfaceViewSize()
+        }
+    }
+    
+    /**
+     * 调整SurfaceView大小以适配视频宽高比
+     * 在屏幕中居中显示，不拉伸变形
+     */
+    private fun adjustSurfaceViewSize() {
+        if (videoWidth == 0 || videoHeight == 0) {
+            return
+        }
+        
+        // 获取屏幕尺寸
+        val screenWidth = window.decorView.width
+        val screenHeight = window.decorView.height
+        
+        // 计算视频宽高比
+        val videoAspectRatio = videoWidth.toFloat() / videoHeight.toFloat()
+        val screenAspectRatio = screenWidth.toFloat() / screenHeight.toFloat()
+        
+        val layoutParams = surfaceView.layoutParams
+        
+        if (videoAspectRatio > screenAspectRatio) {
+            // 视频更宽，以宽度为准
+            layoutParams.width = screenWidth
+            layoutParams.height = (screenWidth / videoAspectRatio).toInt()
+        } else {
+            // 视频更高，以高度为准
+            layoutParams.height = screenHeight
+            layoutParams.width = (screenHeight * videoAspectRatio).toInt()
+        }
+        
+        surfaceView.layoutParams = layoutParams
+        
+        Log.d(TAG, "SurfaceView调整为: ${layoutParams.width}x${layoutParams.height} (视频比例: $videoAspectRatio, 屏幕比例: $screenAspectRatio)")
     }
 
     // 用于DLNA控制器调用的方法

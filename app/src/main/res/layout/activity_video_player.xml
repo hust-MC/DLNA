@@ -7,14 +7,22 @@
     android:background="@android:color/black"
     tools:context=".VideoPlayerActivity">
 
-    <SurfaceView
-        android:id="@+id/playerSurfaceView"
+    <!-- 使用FrameLayout包裹SurfaceView实现居中 -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent">
+        
+        <SurfaceView
+            android:id="@+id/playerSurfaceView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center" />
+            
+    </FrameLayout>
 
     <LinearLayout
         android:id="@+id/controlsLayout"

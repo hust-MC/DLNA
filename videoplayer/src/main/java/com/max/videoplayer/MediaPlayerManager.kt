@@ -58,6 +58,7 @@ class MediaPlayerManager(private val context: Context) {
         fun onPlaybackCompleted()
         fun onError(errorMsg: String)
         fun onBufferingUpdate(percent: Int)
+        fun onVideoSizeChanged(width: Int, height: Int)
     }
 
     fun setStateListener(listener: MediaStateListener) {
@@ -120,6 +121,12 @@ class MediaPlayerManager(private val context: Context) {
             // 设置播放状态监听
             exoPlayer?.addListener(object : Player.Listener {
                 // Player.Listener 的回调默认在主线程执行，无需额外切换
+                
+                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                    Log.d(TAG, "视频尺寸: ${videoSize.width} x ${videoSize.height}")
+                    stateListener?.onVideoSizeChanged(videoSize.width, videoSize.height)
+                }
+                
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
                         Player.STATE_READY -> {
