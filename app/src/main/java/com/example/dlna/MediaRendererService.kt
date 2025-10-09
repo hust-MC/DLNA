@@ -13,15 +13,14 @@ import org.fourthline.cling.binding.annotations.UpnpServiceId
 import org.fourthline.cling.binding.annotations.UpnpServiceType
 import org.fourthline.cling.binding.annotations.UpnpStateVariable
 import org.fourthline.cling.model.types.UnsignedIntegerFourBytes
-import org.fourthline.cling.support.avtransport.lastchange.AVTransportLastChangeParser
 import org.fourthline.cling.support.avtransport.lastchange.AVTransportVariable
 import org.fourthline.cling.support.lastchange.LastChange
 import org.fourthline.cling.support.lastchange.LastChangeDelegator
 import org.fourthline.cling.support.model.TransportState
+import java.lang.ref.WeakReference
 import java.util.Locale
 import java.util.Timer
 import java.util.TimerTask
-import java.lang.ref.WeakReference
 
 /**
  * UPnP媒体渲染服务
@@ -36,11 +35,11 @@ import java.lang.ref.WeakReference
 )
 class MediaRendererService : LastChangeDelegator {
 
-    /** 实例级别的PropertyChangeSupport，用于Cling框架的事件通知 */
-    private val propertyChangeSupport: java.beans.PropertyChangeSupport = java.beans.PropertyChangeSupport(this)
+    /** PropertyChangeSupport用于Cling框架的GENA事件通知机制 */
+    private val propertyChangeSupport = java.beans.PropertyChangeSupport(this)
     
-    /** 实例级别的LastChange对象 */
-    private val lastChangeInstance: LastChange = LastChange(CustomAVTransportLastChangeParser())
+    /** LastChange管理器，用于累积AVTransport状态变化并推送给订阅者 */
+    private val lastChangeManager = LastChange(CustomAVTransportLastChangeParser.INSTANCE)
 
     init {
         // 在初始化时保存实例引用
@@ -213,28 +212,22 @@ class MediaRendererService : LastChangeDelegator {
                 // 使用Handler确保在主线程中获取播放状态
                 mainHandler.post {
                     // 更新播放状态
-                    val state = when (player.getCurrentState()) {
+                    when (player.getCurrentState()) {
                         MediaPlayerManager.PlaybackState.PLAYING -> {
                             service.currentTransportState = "PLAYING"
-                            TransportState.PLAYING
                         }
-
                         MediaPlayerManager.PlaybackState.PAUSED -> {
                             service.currentTransportState = "PAUSED_PLAYBACK"
-                            TransportState.PAUSED_PLAYBACK
                         }
-
                         MediaPlayerManager.PlaybackState.STOPPED -> {
                             service.currentTransportState = "STOPPED"
-                            TransportState.STOPPED
                         }
-
                         MediaPlayerManager.PlaybackState.ERROR -> {
                             service.currentTransportState = "ERROR"
-                            TransportState.STOPPED
                         }
-
-                        else -> TransportState.STOPPED
+                        else -> {
+                            service.currentTransportState = "STOPPED"
+                        }
                     }
 
                     // 更新进度信息
@@ -243,30 +236,16 @@ class MediaRendererService : LastChangeDelegator {
 
                     if (duration > 0) {
                         val formattedDuration = formatTime(duration)
-                        service.mediaDuration = formattedDuration
-                        service.trackDuration = formattedDuration
-
                         val formattedPosition = formatTime(position)
-                        service.absTime = formattedPosition
-                        service.relTime = formattedPosition
+                        
+                        // 更新时长状态变量（供GetPositionInfo/GetMediaInfo返回）
+                        service.currentMediaDuration = formattedDuration
+                        service.currentTrackDuration = formattedDuration
+                        
+                        // 更新播放位置状态变量（供GetPositionInfo返回）⭐ 核心：爱奇艺轮询读取这里
                         service.relativeTimePosition = formattedPosition
                         service.absoluteTimePosition = formattedPosition
-                        service.currentTrackURI = service.currentURI
-
-                        // 使用LastChange事件机制累积状态变化
-                        // DLNAService 的定时器会定期调用 fireLastChange() 将累积的变化推送给订阅者
-//                        try {
-//                            service.lastChangeInstance.setEventedValue(
-//                                INSTANCE_ID,
-//                                AVTransportVariable.TransportState(state),
-//                                AVTransportVariable.RelativeTimePosition(formattedPosition),
-//                                AVTransportVariable.AbsoluteTimePosition(formattedPosition),
-//                                AVTransportVariable.CurrentTrackDuration(formattedDuration),
-//                                AVTransportVariable.CurrentMediaDuration(formattedDuration)
-//                            )
-//                        } catch (e: Exception) {
-//                            Log.e(TAG, getString(R.string.log_update_lastchange_status_error), e)
-//                        }
+                        service.currentTrackURI = service.avTransportURI
 
                         Log.d(
                             TAG,
@@ -282,63 +261,6 @@ class MediaRendererService : LastChangeDelegator {
                 Log.e(TAG, getString(R.string.log_update_playback_status_error), e)
             }
         }
-
-        /**
-         * 自定义的LastChange解析器类，用于解决Android上的XML解析器兼容性问题
-         */
-        private class CustomAVTransportLastChangeParser : AVTransportLastChangeParser() {
-            // 禁用架构验证
-            override fun getSchemaSources() = null
-
-            // 重写create方法完全替换原始SAXParser中的实现，避免设置不兼容的XML解析器特性
-            override fun create(): org.xml.sax.XMLReader {
-                try {
-                    val factory = javax.xml.parsers.SAXParserFactory.newInstance()
-                    factory.isNamespaceAware = true
-
-                    // 不尝试设置不兼容的特性http://apache.org/xml/features/disallow-doctype-decl
-                    // 但仍设置其他重要安全特性（如果支持）
-                    try {
-                        // 禁用外部实体处理，防止XXE攻击
-                        factory.setFeature(
-                            "http://xml.org/sax/features/external-general-entities",
-                            false
-                        )
-                        factory.setFeature(
-                            "http://xml.org/sax/features/external-parameter-entities",
-                            false
-                        )
-                    } catch (e: Exception) {
-                        // 如果特性不被支持，记录警告但继续执行
-                        Log.w(TAG, "XML解析器不支持禁用外部实体特性: ${e.message}")
-                    }
-
-                    // 创建XMLReader而不设置不兼容的特性
-                    val reader = factory.newSAXParser().xmlReader
-
-                    // 设置XMLReader的特性（如果支持）
-                    try {
-                        reader.setFeature(
-                            "http://xml.org/sax/features/external-general-entities",
-                            false
-                        )
-                        reader.setFeature(
-                            "http://xml.org/sax/features/external-parameter-entities",
-                            false
-                        )
-                    } catch (e: Exception) {
-                        // 如果特性不被支持，记录警告但继续执行
-                        Log.w(TAG, "XMLReader不支持禁用外部实体特性: ${e.message}")
-                    }
-
-                    return reader
-                } catch (e: Exception) {
-                    // 如果创建失败，记录错误并抛出运行时异常
-                    Log.e(TAG, "创建XMLReader失败", e)
-                    throw RuntimeException("创建XMLReader失败", e)
-                }
-            }
-        }
     }
 
     /**
@@ -347,76 +269,92 @@ class MediaRendererService : LastChangeDelegator {
     @UpnpStateVariable(defaultValue = "0", sendEvents = false, name = "InstanceID")
     private var instanceId: UnsignedIntegerFourBytes? = null
 
+    /** LastChange事件状态变量（UPnP规范要求），用于GENA事件推送 */
     @UpnpStateVariable(sendEvents = true, eventMaximumRateMilliseconds = 200)
-    private var lastChange = ""
+    private var lastChangeValue = ""
 
+    /** 当前传输状态（STOPPED/PLAYING/PAUSED_PLAYBACK等） */
     @UpnpStateVariable(defaultValue = "STOPPED", name = "TransportState")
     private var currentTransportState: String = "STOPPED"
-    
+
     @UpnpStateVariable(defaultValue = "OK", name = "TransportStatus")
-    private var transportStatus: String = "OK"
+    private var currentTransportStatus: String = "OK"
     
+    /** 播放速度（通常为"1"） */
     @UpnpStateVariable(defaultValue = "1", name = "TransportPlaySpeed")
-    private var transportPlaySpeed: String = "1"
+    private var currentTransportPlaySpeed: String = "1"
     
+    /** 轨道总数（单视频播放时为0或1） */
     @UpnpStateVariable(defaultValue = "0", datatype = "ui4", name = "NumberOfTracks")
     private var numberOfTracks: UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(0)
     
+    /** 下一个待播放URI（连续播放场景，当前未使用） */
     @UpnpStateVariable(defaultValue = "", name = "NextAVTransportURI")
     private var nextAVTransportURI: String = ""
     
+    /** 下一个待播放URI的元数据（当前未使用） */
     @UpnpStateVariable(defaultValue = "", name = "NextAVTransportURIMetaData")
     private var nextAVTransportURIMetaData: String = ""
     
+    /** 播放存储介质（网络流媒体） */
     @UpnpStateVariable(defaultValue = "NETWORK", name = "PlaybackStorageMedium")
     private var playbackStorageMedium: String = "NETWORK"
     
+    /** 录制存储介质（渲染器不支持录制） */
     @UpnpStateVariable(defaultValue = "NOT_IMPLEMENTED", name = "RecordStorageMedium")
     private var recordStorageMedium: String = "NOT_IMPLEMENTED"
     
+    /** 录制介质写入状态（渲染器不支持录制） */
     @UpnpStateVariable(defaultValue = "NOT_IMPLEMENTED", name = "RecordMediumWriteStatus")
     private var recordMediumWriteStatus: String = "NOT_IMPLEMENTED"
 
+    /** 当前轨道编号（通常为0） */
     @UpnpStateVariable(defaultValue = "0", datatype = "ui4", name = "CurrentTrack")
     private var currentTrack: UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(0)
 
+    /** 当前轨道时长（HH:MM:SS格式） */
     @UpnpStateVariable(defaultValue = "00:00:00", name = "CurrentTrackDuration")
-    private var trackDuration: String = "00:00:00"
+    private var currentTrackDuration: String = "00:00:00"
 
+    /** 当前媒体总时长（HH:MM:SS格式） */
     @UpnpStateVariable(defaultValue = "00:00:00", name = "CurrentMediaDuration")
-    private var mediaDuration: String = "00:00:00"
+    private var currentMediaDuration: String = "00:00:00"
 
+    /** 当前播放URI */
     @UpnpStateVariable(defaultValue = "", name = "AVTransportURI")
-    private var currentURI: String = ""
+    private var avTransportURI: String = ""
 
+    /** 当前URI的元数据（DIDL-Lite XML格式） */
     @UpnpStateVariable(defaultValue = "", name = "AVTransportURIMetaData")
-    private var currentURIMetaData: String = ""
+    private var avTransportURIMetaData: String = ""
     
+    /** 当前轨道URI */
     @UpnpStateVariable(defaultValue = "", name = "CurrentTrackURI")
     private var currentTrackURI: String = ""
     
+    /** 当前轨道元数据（DIDL-Lite XML格式） */
     @UpnpStateVariable(defaultValue = "NOT_IMPLEMENTED", name = "CurrentTrackMetaData")
     private var currentTrackMetaData: String = "NOT_IMPLEMENTED"
     
+    /** 相对时间位置/播放进度（HH:MM:SS格式）⭐ 核心变量 */
     @UpnpStateVariable(defaultValue = "00:00:00", name = "RelativeTimePosition")
     private var relativeTimePosition: String = "00:00:00"
     
+    /** 绝对时间位置（HH:MM:SS格式，通常与RelativeTimePosition相同） */
     @UpnpStateVariable(defaultValue = "00:00:00", name = "AbsoluteTimePosition")
     private var absoluteTimePosition: String = "00:00:00"
     
+    /** 相对计数位置（不常用，设为最大值表示不支持） */
     @UpnpStateVariable(defaultValue = "2147483647", datatype = "i4", name = "RelativeCounterPosition")
     private var relativeCounterPosition: Int = Integer.MAX_VALUE
     
+    /** 绝对计数位置（不常用，设为最大值表示不支持） */
     @UpnpStateVariable(defaultValue = "2147483647", datatype = "i4", name = "AbsoluteCounterPosition")
     private var absoluteCounterPosition: Int = Integer.MAX_VALUE
-
-    @UpnpStateVariable(defaultValue = "00:00:01")
-    private var absTime: String = "00:00:01"
-
-    @UpnpStateVariable(defaultValue = "00:00:01")
-    private var relTime: String = "00:00:01"
     
-    // A_ARG_TYPE 状态变量用于动作参数（UPnP规范要求）
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // A_ARG_TYPE 参数类型变量（UPnP规范要求，用于动作参数类型声明）
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     @UpnpStateVariable(sendEvents = false, name = "A_ARG_TYPE_SeekMode")
     private var argTypeSeekMode: String = "REL_TIME"
     
@@ -428,39 +366,45 @@ class MediaRendererService : LastChangeDelegator {
 
     /**
      * 获取PropertyChangeSupport实例
-     * 用于Cling框架的事件通知机制
-     * DefaultServiceManager会通过反射调用此方法
+     * 
+     * Cling框架的DefaultServiceManager会通过反射调用此方法，
+     * 用于管理UPnP事件订阅和通知机制（GENA协议）
      */
-    fun getPropertyChangeSupport(): java.beans.PropertyChangeSupport {
-        return propertyChangeSupport
-    }
+    fun getPropertyChangeSupport() = propertyChangeSupport
 
     /**
-     * 实现LastChangeDelegator接口：获取LastChange对象
+     * 获取LastChange对象（LastChangeDelegator接口要求）
+     * 
+     * LastChangeAwareServiceManager会调用此方法获取LastChange实例，
+     * 用于触发GENA事件推送
      */
-    override fun getLastChange(): LastChange {
-        return lastChangeInstance
-    }
+    override fun getLastChange() = lastChangeManager
 
     /**
-     * 实现LastChangeDelegator接口：为新订阅者提供当前状态
+     * 为新订阅者提供初始状态（LastChangeDelegator接口要求）
+     * 
+     * 当控制点（如爱奇艺）订阅AVTransport服务时，需要返回当前完整状态。
+     * LastChangeAwareServiceManager会调用此方法生成初始事件通知。
      */
     override fun appendCurrentState(lc: LastChange, instanceId: UnsignedIntegerFourBytes) {
         try {
-            val player = getMediaPlayerManager()
-            val state = when (player?.getCurrentState()) {
+            val player = getMediaPlayerManager() ?: return
+            
+            // 获取当前播放状态
+            val state = when (player.getCurrentState()) {
                 MediaPlayerManager.PlaybackState.PLAYING -> TransportState.PLAYING
                 MediaPlayerManager.PlaybackState.PAUSED -> TransportState.PAUSED_PLAYBACK
                 MediaPlayerManager.PlaybackState.STOPPED -> TransportState.STOPPED
                 else -> TransportState.STOPPED
             }
             
-            val position = player?.getCurrentPosition() ?: 0
-            val duration = player?.getDuration() ?: 0
-            
+            // 获取当前播放进度
+            val position = player.getCurrentPosition()
+            val duration = player.getDuration()
             val formattedPosition = formatTime(position)
             val formattedDuration = if (duration > 0) formatTime(duration) else "00:00:00"
             
+            // 添加所有重要状态到LastChange
             lc.setEventedValue(
                 instanceId,
                 AVTransportVariable.TransportState(state),
@@ -470,17 +414,17 @@ class MediaRendererService : LastChangeDelegator {
                 AVTransportVariable.CurrentMediaDuration(formattedDuration)
             )
         } catch (e: Exception) {
-            Log.e(TAG, "appendCurrentState error", e)
+            Log.e(TAG, "Failed to append current state", e)
         }
     }
 
     /**
-     * 实现LastChangeDelegator接口：返回当前实例ID数组
-     * 只支持单个实例ID=0
+     * 返回当前活动的实例ID列表（LastChangeDelegator接口要求）
+     * 
+     * AVTransport服务支持"逻辑实例"概念，每个实例可以独立播放。
+     * 本实现只支持单个实例（ID=0），即一次只能播放一个视频。
      */
-    override fun getCurrentInstanceIds(): Array<UnsignedIntegerFourBytes> {
-        return arrayOf(INSTANCE_ID)
-    }
+    override fun getCurrentInstanceIds() = arrayOf(INSTANCE_ID)
 
     /**
      * 设置URI动作
@@ -499,9 +443,10 @@ class MediaRendererService : LastChangeDelegator {
     ) {
         Log.d(TAG, "接收到设置URI请求: $uri")
 
+        // 保存实例ID（通常为0）
         this.instanceId = instanceId
-        this.currentURI = uri
-        this.currentURIMetaData = metadata
+        this.avTransportURI = uri
+        this.avTransportURIMetaData = metadata
         this.currentTrackURI = uri
         this.currentTrackMetaData = metadata
 
@@ -519,11 +464,11 @@ class MediaRendererService : LastChangeDelegator {
      */
     @UpnpAction
     fun play(
-        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "InstanceID") _instanceId: UnsignedIntegerFourBytes,
         @UpnpInputArgument(name = "Speed", stateVariable = "TransportPlaySpeed") speed: String
     ) {
-        Log.d(TAG, getString(R.string.log_play_request, speed, currentURI))
-        this.transportPlaySpeed = speed
+        Log.d(TAG, getString(R.string.log_play_request, speed, avTransportURI))
+        this.currentTransportPlaySpeed = speed
 
         // 更新状态
         this.currentTransportState = "PLAYING"
@@ -532,9 +477,9 @@ class MediaRendererService : LastChangeDelegator {
         Handler(Looper.getMainLooper()).post {
             try {
                 // 如果尚未打开播放页面，则启动视频播放页面
-                if (currentURI.isNotEmpty()) {
+                if (avTransportURI.isNotEmpty()) {
                     appContext?.let { context ->
-                        getContext()?.let { VideoPlayerActivity.start(it, currentURI) }
+                        getContext()?.let { VideoPlayerActivity.start(it, avTransportURI) }
                         Log.d(TAG, "播放时启动视频播放页面")
                     }
                 } else {
@@ -564,7 +509,7 @@ class MediaRendererService : LastChangeDelegator {
      * @param instanceId 实例ID
      */
     @UpnpAction
-    fun pause(@UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes) {
+    fun pause(@UpnpInputArgument(name = "InstanceID") _instanceId: UnsignedIntegerFourBytes) {
         Log.d(TAG, "接收到暂停请求")
 
         // 更新状态
@@ -584,7 +529,7 @@ class MediaRendererService : LastChangeDelegator {
      * @param instanceId 实例ID
      */
     @UpnpAction
-    fun stop(@UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes) {
+    fun stop(@UpnpInputArgument(name = "InstanceID") _instanceId: UnsignedIntegerFourBytes) {
         Log.d(TAG, "接收到停止请求")
         // 更新状态
         currentTransportState = "STOPPED"
@@ -607,7 +552,7 @@ class MediaRendererService : LastChangeDelegator {
      */
     @UpnpAction
     fun seek(
-        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "InstanceID") _instanceId: UnsignedIntegerFourBytes,
         @UpnpInputArgument(name = "Unit", stateVariable = "A_ARG_TYPE_SeekMode") unit: String,
         @UpnpInputArgument(name = "Target", stateVariable = "A_ARG_TYPE_SeekTarget") target: String
     ) {
@@ -632,12 +577,12 @@ class MediaRendererService : LastChangeDelegator {
         UpnpOutputArgument(name = "CurrentSpeed", stateVariable = "TransportPlaySpeed", getterName = "getCurrentSpeed")
     ])
     fun getTransportInfo(
-        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
+        @UpnpInputArgument(name = "InstanceID") _instanceID: UnsignedIntegerFourBytes
     ): org.fourthline.cling.support.model.TransportInfo {
         return org.fourthline.cling.support.model.TransportInfo(
             org.fourthline.cling.support.model.TransportState.valueOf(currentTransportState),
             org.fourthline.cling.support.model.TransportStatus.OK,
-            transportPlaySpeed
+            currentTransportPlaySpeed
         )
     }
 
@@ -654,11 +599,11 @@ class MediaRendererService : LastChangeDelegator {
         UpnpOutputArgument(name = "WriteStatus", stateVariable = "RecordMediumWriteStatus", getterName = "getWriteStatus")
     ])
     fun getMediaInfo(
-        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
+        @UpnpInputArgument(name = "InstanceID") _instanceID: UnsignedIntegerFourBytes
     ): org.fourthline.cling.support.model.MediaInfo {
         return org.fourthline.cling.support.model.MediaInfo(
-            currentURI,
-            currentURIMetaData
+            avTransportURI,
+            avTransportURIMetaData
         )
     }
 
@@ -674,21 +619,21 @@ class MediaRendererService : LastChangeDelegator {
         UpnpOutputArgument(name = "AbsCount", stateVariable = "AbsoluteCounterPosition", getterName = "getAbsCount")
     ])
     fun getPositionInfo(
-        @UpnpInputArgument(name = "InstanceID") instanceID: UnsignedIntegerFourBytes
+        @UpnpInputArgument(name = "InstanceID") _instanceID: UnsignedIntegerFourBytes
     ): org.fourthline.cling.support.model.PositionInfo {
         // 返回符合UPnP规范的PositionInfo对象
-        // 爱奇艺通过轮询此方法来获取播放进度
+        // 控制点（爱奇艺/B站/腾讯视频）通过轮询此方法获取播放进度
         val info = org.fourthline.cling.support.model.PositionInfo(
             currentTrack.value.toLong(),
-            trackDuration,
+            currentTrackDuration,
             currentTrackMetaData,
             currentTrackURI,
-            relativeTimePosition,
+            relativeTimePosition,  // ⭐ 核心：播放进度
             absoluteTimePosition,
             relativeCounterPosition,
             absoluteCounterPosition
         )
-        Log.d(TAG, "GetPositionInfo调用: Track=${currentTrack.value}, RelTime=$relativeTimePosition, Duration=$trackDuration, URI=$currentTrackURI")
+        Log.d(TAG, "GetPositionInfo调用: Track=${currentTrack.value}, RelTime=$relativeTimePosition, Duration=$currentTrackDuration")
         return info
     }
 } 

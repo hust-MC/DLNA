@@ -4,62 +4,75 @@ import android.util.Log
 import org.fourthline.cling.support.avtransport.lastchange.AVTransportLastChangeParser
 
 /**
- * 自定义的LastChange解析器类，用于解决Android上的XML解析器兼容性问题
+ * 自定义的AVTransport LastChange解析器
+ * 
+ * 解决Android平台XML解析器特性不兼容的问题。
+ * 原生的AVTransportLastChangeParser会尝试设置某些Android不支持的XML特性，导致初始化失败。
+ * 
+ * @author Max
  */
 class CustomAVTransportLastChangeParser : AVTransportLastChangeParser() {
-    // 禁用架构验证
+    
+    companion object {
+        private const val TAG = "CustomLastChangeParser"
+        
+        /**
+         * 单例实例，避免重复创建
+         */
+        val INSTANCE = CustomAVTransportLastChangeParser()
+    }
+    
+    /**
+     * 禁用XML架构验证
+     * Android环境下可能没有对应的XSD文件
+     */
     override fun getSchemaSources() = null
 
-    // 重写create方法完全替换原始SAXParser中的实现，避免设置不兼容的XML解析器特性
+    /**
+     * 创建兼容Android的XML解析器
+     * 避免设置Android不支持的XML特性
+     */
     override fun create(): org.xml.sax.XMLReader {
         try {
             val factory = javax.xml.parsers.SAXParserFactory.newInstance()
             factory.isNamespaceAware = true
 
-            // 不尝试设置不兼容的特性http://apache.org/xml/features/disallow-doctype-decl
-            // 但仍设置其他重要安全特性（如果支持）
-            try {
-                // 禁用外部实体处理，防止XXE攻击
-                factory.setFeature(
-                    "http://xml.org/sax/features/external-general-entities",
-                    false
-                )
-                factory.setFeature(
-                    "http://xml.org/sax/features/external-parameter-entities",
-                    false
-                )
-            } catch (e: Exception) {
-                // 如果特性不被支持，记录警告但继续执行
-                Log.w(TAG, "XML解析器不支持禁用外部实体特性: ${e.message}")
-            }
+            // 尝试设置安全特性（如果支持）
+            trySetSecurityFeature(factory)
 
-            // 创建XMLReader而不设置不兼容的特性
             val reader = factory.newSAXParser().xmlReader
-
-            // 设置XMLReader的特性（如果支持）
-            try {
-                reader.setFeature(
-                    "http://xml.org/sax/features/external-general-entities",
-                    false
-                )
-                reader.setFeature(
-                    "http://xml.org/sax/features/external-parameter-entities",
-                    false
-                )
-            } catch (e: Exception) {
-                // 如果特性不被支持，记录警告但继续执行
-                Log.w(TAG, "XMLReader不支持禁用外部实体特性: ${e.message}")
-            }
+            
+            // 尝试在XMLReader上设置安全特性（如果支持）
+            trySetSecurityFeature(reader)
 
             return reader
         } catch (e: Exception) {
-            // 如果创建失败，记录错误并抛出运行时异常
-            Log.e(TAG, "创建XMLReader失败", e)
-            throw RuntimeException("创建XMLReader失败", e)
+            Log.e(TAG, "创建XML解析器失败", e)
+            throw RuntimeException("创建XML解析器失败", e)
         }
     }
-
-    companion object {
-        const val TAG = "CustomAVTransportLastChangeParser"
+    
+    /**
+     * 尝试在SAXParserFactory上设置安全特性
+     */
+    private fun trySetSecurityFeature(factory: javax.xml.parsers.SAXParserFactory) {
+        try {
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        } catch (e: Exception) {
+            Log.w(TAG, "SAXParserFactory不支持部分安全特性: ${e.message}")
+        }
+    }
+    
+    /**
+     * 尝试在XMLReader上设置安全特性
+     */
+    private fun trySetSecurityFeature(reader: org.xml.sax.XMLReader) {
+        try {
+            reader.setFeature("http://xml.org/sax/features/external-general-entities", false)
+            reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        } catch (e: Exception) {
+            Log.w(TAG, "XMLReader不支持部分安全特性: ${e.message}")
+        }
     }
 }

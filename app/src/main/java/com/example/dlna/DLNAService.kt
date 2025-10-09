@@ -179,11 +179,11 @@ class DLNAService : Service() {
                 binder.read(MediaRendererService::class.java) as LocalService<MediaRendererService>
             
             // 使用 LastChangeAwareServiceManager 来支持 LastChange 事件机制
-            val lastChangeParser = CustomAVTransportLastChangeParser()
+            // 共享单例Parser，避免重复创建
             val mediaRendererServiceManager = LastChangeAwareServiceManager(
                 mediaRendererService,
                 MediaRendererService::class.java,
-                lastChangeParser
+                CustomAVTransportLastChangeParser.INSTANCE
             )
             
             mediaRendererService.apply {
@@ -228,23 +228,27 @@ class DLNAService : Service() {
     }
     
     /**
-     * 启动 LastChange 事件触发定时器
-     * 定期调用 fireLastChange() 将累积的状态变化推送给订阅者
+     * 启动LastChange事件推送定时器
+     * 
+     * 定期调用fireLastChange()将累积的状态变化通过GENA协议推送给所有订阅者。
+     * 这是UPnP事件通知机制的一部分，配合GetPositionInfo轮询实现双重进度同步。
+     * 
+     * 触发频率：每秒1次
      */
     private fun startLastChangeTimer() {
         lastChangeTimer?.cancel()
-        lastChangeTimer = java.util.Timer().apply {
+        lastChangeTimer = java.util.Timer("LastChangeEventTimer", true).apply {
             schedule(object : java.util.TimerTask() {
                 override fun run() {
                     try {
                         mediaRendererServiceManager?.fireLastChange()
                     } catch (e: Exception) {
-                        Log.e(TAG, "触发 LastChange 事件失败", e)
+                        Log.e(TAG, "Failed to fire LastChange event", e)
                     }
                 }
-            }, 1000, 1000) // 初始延迟1秒，然后每秒执行一次
+            }, 1000, 1000)
         }
-        Log.d(TAG, "LastChange 事件触发定时器已启动")
+        Log.d(TAG, "LastChange event timer started")
     }
 
     /** 服务绑定回调 */
