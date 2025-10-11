@@ -12,6 +12,7 @@ import org.fourthline.cling.binding.annotations.UpnpStateVariable
 import org.fourthline.cling.model.types.UnsignedIntegerFourBytes
 import org.fourthline.cling.model.types.UnsignedIntegerTwoBytes
 import com.max.videoplayer.MediaPlayerManager
+import java.lang.ref.WeakReference
 
 /**
  * UPnP渲染控制服务
@@ -30,6 +31,17 @@ class RenderingControlService(private val context: Context) {
         
         /** 最大音量值 */
         private const val MAX_VOLUME = 100
+        private var mediaPlayerManagerRef : WeakReference<MediaPlayerManager>? = null
+
+        /**
+         * 设置媒体播放器管理器
+         *
+         * @param manager MediaPlayerManager实例
+         */
+        fun setMediaPlayerManager(manager: MediaPlayerManager) {
+            Log.d(TAG, "设置MediaPlayerManager")
+            mediaPlayerManagerRef = WeakReference(manager)
+        }
     }
 
     /** 实例ID状态变量 */
@@ -50,16 +62,6 @@ class RenderingControlService(private val context: Context) {
 
     /** 媒体播放管理器引用 */
     private var mediaPlayerManager: MediaPlayerManager? = null
-    
-    /**
-     * 设置媒体播放器管理器
-     * 
-     * @param manager MediaPlayerManager实例
-     */
-    fun setMediaPlayerManager(manager: MediaPlayerManager) {
-        Log.d(TAG, context.getString(R.string.log_set_media_player_manager))
-        mediaPlayerManager = manager
-    }
 
     /** 设置音量 */
     @UpnpAction
@@ -70,9 +72,11 @@ class RenderingControlService(private val context: Context) {
     ) {
         Log.d(TAG, context.getString(R.string.log_set_volume, desiredVolume))
         this.volume = desiredVolume
-        
-        // MediaPlayerManager中没有setVolume方法，所以我们这里只存储值，不执行操作
-        // 将来如果需要控制音量，可以在MediaPlayerManager中添加相应方法
+
+        // 转换音量：UPnP的0-100 → ExoPlayer的0.0-1.0
+        val volumeFloat = desiredVolume.value.toFloat() / MAX_VOLUME
+        mediaPlayerManagerRef?.get()?.setVolume(volumeFloat)
+        Log.d(TAG, "设置音量: ${desiredVolume.value}/100 → $volumeFloat")
     }
 
     /** 设置静音状态 */
@@ -85,7 +89,10 @@ class RenderingControlService(private val context: Context) {
         Log.d(TAG, context.getString(R.string.log_set_mute, desiredMute.toString()))
         this.mute = desiredMute
         
-        // MediaPlayerManager中没有setVolume方法，所以我们这里只存储值，不执行操作
+        // 静音时音量设为0，取消静音时恢复之前的音量
+        val volumeFloat = if (desiredMute) 0f else (volume.value.toFloat() / MAX_VOLUME)
+        mediaPlayerManagerRef?.get()?.setVolume(volumeFloat)
+        Log.d(TAG, "静音状态: $desiredMute, 音量设为: $volumeFloat")
     }
 
     /** 获取当前音量 */

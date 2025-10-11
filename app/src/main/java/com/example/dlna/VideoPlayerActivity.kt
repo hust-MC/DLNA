@@ -94,6 +94,10 @@ class VideoPlayerActivity : Activity(),
         MediaRendererService.setPlayerActivity(this)
         // 将MediaPlayerManager设置到MediaRendererService
         MediaRendererService.setMediaPlayerManager(mediaPlayerManager!!)
+        // 将MediaPlayerManager设置到RenderingControlService（用于音量控制）
+        RenderingControlService.setMediaPlayerManager(mediaPlayerManager!!)
+
+
     }
 
     private fun initMediaPlayerManager() {
@@ -284,7 +288,7 @@ class VideoPlayerActivity : Activity(),
             Log.w(TAG, "视频尺寸无效: ${videoWidth}x${videoHeight}")
             return
         }
-        
+
         // 使用DisplayMetrics获取准确的屏幕尺寸
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
