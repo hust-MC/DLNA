@@ -16,11 +16,9 @@ import java.lang.ref.WeakReference
 
 /**
  * UPnP渲染控制服务
- * 
- * 实现DLNA音量控制功能，支持音量调节和静音控制。
- * 已测试兼容：爱奇艺、B站、腾讯视频、优酷等主流App。
- * 
- * @param context Android上下文
+ *
+ * 该服务实现了UPnP RenderingControl服务规范，用于控制设备的音量和静音状态。
+ * 遵循UPnP/DLNA标准，提供对音频渲染属性的管理功能。
  * @author Max
  */
 @UpnpService(
@@ -28,137 +26,92 @@ import java.lang.ref.WeakReference
     serviceType = UpnpServiceType(value = "RenderingControl", version = 1)
 )
 class RenderingControlService(private val context: Context) {
-    
     companion object {
         private const val TAG = "RenderingControlService"
-        
+
         /** UPnP音量最大值 */
         private const val MAX_VOLUME = 100
-        
+
         /** 播放器管理器的弱引用，避免内存泄漏 */
         private var mediaPlayerManagerRef: WeakReference<MediaPlayerManager>? = null
 
         /**
-         * 设置播放器管理器
-         * 由VideoPlayerActivity在onCreate时调用
+         * 设置媒体播放器管理器
+         *
+         * @param manager MediaPlayerManager实例
          */
         fun setMediaPlayerManager(manager: MediaPlayerManager) {
+            Log.d(TAG, "设置MediaPlayerManager")
             mediaPlayerManagerRef = WeakReference(manager)
-            Log.d(TAG, "MediaPlayerManager已设置")
         }
     }
 
-    // ========== UPnP状态变量 ==========
-    
-    /**
-     * 音量状态变量（0-100）
-     * UPnP规范要求使用ui2类型
-     */
-    @UpnpStateVariable(
-        name = "Volume",
-        datatype = "ui2",
-        defaultValue = "50",
-        sendEvents = false
-    )
-    private var volume = UnsignedIntegerTwoBytes(50)
+    /** 音量状态变量 */
+    @UpnpStateVariable(defaultValue = "50", datatype = "ui2")
+    private var volume: UnsignedIntegerTwoBytes = UnsignedIntegerTwoBytes(50)
 
-    /**
-     * 静音状态变量
-     * false=正常播放，true=静音
-     */
-    @UpnpStateVariable(
-        name = "Mute",
-        datatype = "boolean",
-        defaultValue = "0",
-        sendEvents = false
-    )
-    private var mute = false
-    
-    // UPnP规范要求的参数类型变量（供Cling框架内部使用）
-    @UpnpStateVariable(sendEvents = false, name = "A_ARG_TYPE_InstanceID", datatype = "ui4")
-    private var argTypeInstanceID = UnsignedIntegerFourBytes(0)
-    
-    @UpnpStateVariable(sendEvents = false, name = "A_ARG_TYPE_Channel")
-    private var argTypeChannel = "Master"
+    /** 静音状态变量 */
+    @UpnpStateVariable(defaultValue = "0", datatype = "boolean")
+    private var mute: Boolean = false
 
-    // ========== UPnP动作实现 ==========
+    /** 实例ID状态变量 */
+    @UpnpStateVariable(defaultValue = "0", sendEvents = false, name = "InstanceID")
+    private var instanceId: UnsignedIntegerFourBytes? = null
 
-    /**
-     * 设置音量
-     * 
-     * @param instanceId 实例ID（通常为0）
-     * @param channel 声道（通常为"Master"）
-     * @param desiredVolume 目标音量（0-100）
-     */
+    /** 声道状态变量 */
+    @UpnpStateVariable(defaultValue = "Master", sendEvents = false, name = "Channel")
+    private var channel: String? = null
+
+
+    /** 设置音量 */
     @UpnpAction
     fun setVolume(
-        @UpnpInputArgument(name = "InstanceID", stateVariable = "A_ARG_TYPE_InstanceID") 
-        instanceId: UnsignedIntegerFourBytes,
-        @UpnpInputArgument(name = "Channel", stateVariable = "A_ARG_TYPE_Channel") 
-        channel: String,
-        @UpnpInputArgument(name = "DesiredVolume", stateVariable = "Volume") 
-        desiredVolume: UnsignedIntegerTwoBytes
+        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "Channel") channel: String,
+        @UpnpInputArgument(name = "DesiredVolume") desiredVolume: UnsignedIntegerTwoBytes
     ) {
         Log.d(TAG, "设置音量: ${desiredVolume.value}")
         volume = desiredVolume
 
-        // 转换为ExoPlayer的音量范围（0.0-1.0）
+        // 转换音量：UPnP的0-100 → ExoPlayer的0.0-1.0
         val volumeFloat = desiredVolume.value.toFloat() / MAX_VOLUME
-        
+
         // 静音状态下不改变实际音量
         if (!mute) {
             mediaPlayerManagerRef?.get()?.setVolume(volumeFloat)
         }
     }
 
-    /**
-     * 获取当前音量
-     * 
-     * @return 当前音量值（0-100）
-     */
-    @UpnpAction(out = [UpnpOutputArgument(name = "CurrentVolume", stateVariable = "Volume")])
+    /** 设置静音状态 */
+    @UpnpAction
+    fun setMute(
+        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "Channel") channel: String,
+        @UpnpInputArgument(name = "DesiredMute") desiredMute: Boolean
+    ) {
+        Log.d(TAG, context.getString(R.string.log_set_mute, desiredMute.toString()))
+        this.mute = desiredMute
+
+        // 静音时音量为0，取消静音时恢复当前音量
+        val volumeFloat = if (desiredMute) 0f else (volume.value.toFloat() / MAX_VOLUME)
+        mediaPlayerManagerRef?.get()?.setVolume(volumeFloat)
+        Log.d(TAG, "静音状态: $desiredMute, 音量设为: $volumeFloat")
+    }
+
+    /** 获取当前音量 */
+    @UpnpAction(out = [UpnpOutputArgument(name = "CurrentVolume")])
     fun getVolume(
-        @UpnpInputArgument(name = "InstanceID", stateVariable = "A_ARG_TYPE_InstanceID") 
-        instanceId: UnsignedIntegerFourBytes,
-        @UpnpInputArgument(name = "Channel", stateVariable = "A_ARG_TYPE_Channel") 
-        channel: String
+        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "Channel") channel: String
     ): UnsignedIntegerTwoBytes {
         return volume
     }
 
-    /**
-     * 设置静音状态
-     * 
-     * @param desiredMute true=静音，false=取消静音
-     */
-    @UpnpAction
-    fun setMute(
-        @UpnpInputArgument(name = "InstanceID", stateVariable = "A_ARG_TYPE_InstanceID") 
-        instanceId: UnsignedIntegerFourBytes,
-        @UpnpInputArgument(name = "Channel", stateVariable = "A_ARG_TYPE_Channel") 
-        channel: String,
-        @UpnpInputArgument(name = "DesiredMute", stateVariable = "Mute") 
-        desiredMute: Boolean
-    ) {
-        Log.d(TAG, "设置静音: $desiredMute")
-        mute = desiredMute
-        
-        // 静音时音量为0，取消静音时恢复当前音量
-        val volumeFloat = if (desiredMute) 0f else (volume.value.toFloat() / MAX_VOLUME)
-        mediaPlayerManagerRef?.get()?.setVolume(volumeFloat)
-    }
-
-    /**
-     * 获取当前静音状态
-     * 
-     * @return 当前是否静音
-     */
-    @UpnpAction(out = [UpnpOutputArgument(name = "CurrentMute", stateVariable = "Mute")])
+    /** 获取当前静音状态 */
+    @UpnpAction(out = [UpnpOutputArgument(name = "CurrentMute")])
     fun getMute(
-        @UpnpInputArgument(name = "InstanceID", stateVariable = "A_ARG_TYPE_InstanceID") 
-        instanceId: UnsignedIntegerFourBytes,
-        @UpnpInputArgument(name = "Channel", stateVariable = "A_ARG_TYPE_Channel") 
-        channel: String
+        @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
+        @UpnpInputArgument(name = "Channel") channel: String
     ): Boolean {
         return mute
     }
