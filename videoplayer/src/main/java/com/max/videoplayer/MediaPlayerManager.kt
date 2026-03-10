@@ -9,6 +9,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -193,12 +194,27 @@ class MediaPlayerManager(private val context: Context) {
                 exoPlayer?.setVideoSurface(surface)
             }
 
-            // 设置媒体项，ExoPlayer会使用MediaSourceFactory自动创建合适的MediaSource
-            val mediaItem = MediaItem.fromUri(uri)
+            // 设置媒体项。优酷等推送的 M3U8 链接常带长 query，需显式指定 MIME 为 HLS，否则会被当成分段流解析失败
+            val mediaItem = buildMediaItem(uri)
             exoPlayer?.setMediaItem(mediaItem)
             exoPlayer?.prepare()
         } catch (e: Exception) {
             handleError(e)
+        }
+    }
+
+    /**
+     * 若 URI 为 M3U8/HLS（如优酷 pl-ali.youku.com/playlist/m3u8），强制按 HLS 解析，避免被当作渐进式流导致 UnrecognizedInputFormatException。
+     */
+    private fun buildMediaItem(uri: String): MediaItem {
+        val lowerUri = uri.lowercase()
+        return if (lowerUri.contains("m3u8") || lowerUri.contains(".m3u8")) {
+            MediaItem.Builder()
+                .setUri(uri)
+                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                .build()
+        } else {
+            MediaItem.fromUri(uri)
         }
     }
 
