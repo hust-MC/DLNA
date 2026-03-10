@@ -414,7 +414,7 @@ class MediaRendererService : LastChangeDelegator {
                 AVTransportVariable.CurrentMediaDuration(formattedDuration)
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to append current state", e)
+            Log.e(TAG, getString(R.string.log_append_current_state_failed), e)
         }
     }
 
@@ -441,7 +441,7 @@ class MediaRendererService : LastChangeDelegator {
         @UpnpInputArgument(name = "CurrentURI", stateVariable = "AVTransportURI") uri: String,
         @UpnpInputArgument(name = "CurrentURIMetaData", stateVariable = "AVTransportURIMetaData") metadata: String
     ) {
-        Log.d(TAG, "接收到设置URI请求: $uri")
+        Log.d(TAG, getString(R.string.log_set_uri_request, uri))
 
         // 保存实例ID（通常为0）
         this.instanceId = instanceId
@@ -486,7 +486,7 @@ class MediaRendererService : LastChangeDelegator {
                 if (avTransportURI.isNotEmpty()) {
                     appContext?.let { context ->
                         getContext()?.let { VideoPlayerActivity.start(it, avTransportURI) }
-                        Log.d(TAG, "播放时启动视频播放页面")
+                        Log.d(TAG, getString(R.string.log_start_video_player_on_play))
                     }
                 } else {
                     val player = getMediaPlayerManager()
@@ -515,7 +515,7 @@ class MediaRendererService : LastChangeDelegator {
      */
     @UpnpAction
     fun pause(@UpnpInputArgument(name = "InstanceID") _instanceId: UnsignedIntegerFourBytes) {
-        Log.d(TAG, "接收到暂停请求")
+        Log.d(TAG, getString(R.string.log_pause_request))
 
         // 更新状态
         currentTransportState = "PAUSED_PLAYBACK"
@@ -535,7 +535,7 @@ class MediaRendererService : LastChangeDelegator {
      */
     @UpnpAction
     fun stop(@UpnpInputArgument(name = "InstanceID") _instanceId: UnsignedIntegerFourBytes) {
-        Log.d(TAG, "接收到停止请求")
+        Log.d(TAG, getString(R.string.log_stop_request))
         // 更新状态
         currentTransportState = "STOPPED"
 
@@ -561,7 +561,7 @@ class MediaRendererService : LastChangeDelegator {
         @UpnpInputArgument(name = "Unit", stateVariable = "A_ARG_TYPE_SeekMode") unit: String,
         @UpnpInputArgument(name = "Target", stateVariable = "A_ARG_TYPE_SeekTarget") target: String
     ) {
-        Log.d(TAG, "接收到跳转请求: 单位=$unit, 目标=$target")
+        Log.d(TAG, getString(R.string.log_seek_request, unit, target))
 
         if (unit == "REL_TIME" || unit == "ABS_TIME") {
             val timeMs = parseTimeString(target)
@@ -571,7 +571,7 @@ class MediaRendererService : LastChangeDelegator {
                 mediaPlayerManagerRef?.get()?.seekTo(timeMs)
             }
 
-            Log.d(TAG, "已跳转到 ${timeMs / 1000}秒")
+            Log.d(TAG, getString(R.string.log_seek_completed, timeMs / 1000))
         }
     }
 
@@ -638,7 +638,7 @@ class MediaRendererService : LastChangeDelegator {
             relativeCounterPosition,
             absoluteCounterPosition
         )
-        Log.d(TAG, "GetPositionInfo调用: Track=${currentTrack.value}, RelTime=$relativeTimePosition, Duration=$currentTrackDuration")
+        Log.d(TAG, getString(R.string.log_get_position_info_call, currentTrack.value.toInt(), relativeTimePosition, currentTrackDuration))
         return info
     }
 } 

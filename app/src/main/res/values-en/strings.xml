@@ -1,0 +1,121 @@
+<resources>
+    <string name="app_name">DLNA</string>
+    <string name="appName">Cling Light</string>
+    <string name="switchRouter">Network On/Off</string>
+    <string name="toggleDebugLogging">Toggle debug logging</string>
+    <string name="enablingRouter">Enabling network router…</string>
+    <string name="disablingRouter">Disabling network router…</string>
+    <string name="errorSwitchingRouter">Error switching router: </string>
+    <string name="enablingDebugLogging">Enabling debug logging…</string>
+    <string name="disablingDebugLogging">Disabling debug logging…</string>
+    <string name="registeringDevice">Registering UPnP BinaryLight device…</string>
+    <string name="createDeviceFailed">Creating of BinaryLight failed, check the log!</string>
+
+    <string name="dlna_service_channel_name">DLNA Service Channel</string>
+    <string name="dlna_service_channel_description">DLNA service notification channel</string>
+    <string name="dlna_service_notification_title">DLNA Cast Service</string>
+    <string name="dlna_service_notification_text">Running…</string>
+
+    <string name="device_friendly_name">Max Cast</string>
+    <string name="device_manufacturer">Max Cast</string>
+    <string name="device_model_name">DLNA Player</string>
+    <string name="device_model_description">Android DLNA Media Renderer</string>
+    <string name="device_model_version">1.0</string>
+
+    <string name="log_dlna_service_created">DLNA service created</string>
+    <string name="log_dlna_service_ensure_started">Ensure DLNA service started</string>
+    <string name="log_dlna_service_start_request_sent">DLNA service start request sent</string>
+    <string name="log_dlna_service_already_running">DLNA service already running</string>
+    <string name="log_dlna_service_binded">DLNA service bound</string>
+    <string name="log_dlna_service_destroying">Destroying DLNA service</string>
+    <string name="log_dlna_service_start_command">DLNA service start command</string>
+    <string name="log_upnp_service_connected">UPnP Service connected</string>
+    <string name="log_upnp_service_disconnected">UPnP Service disconnected</string>
+    <string name="log_dlna_device_register_success">DLNA device registered: %s</string>
+    <string name="log_dlna_device_register_failed">Failed to register DLNA device</string>
+    <string name="log_upnp_service_closed">UPnP service closed</string>
+    <string name="log_upnp_service_close_error">Error closing UPnP service</string>
+    <string name="log_service_connection_unbound">Service connection unbound</string>
+    <string name="log_service_connection_unbind_error">Error unbinding service connection</string>
+
+    <string name="log_media_renderer_service_created">MediaRendererService instance created</string>
+    <string name="log_media_renderer_service_initialized">MediaRendererService initialized</string>
+    <string name="log_lastchange_init_failed">LastChange init failed</string>
+    <string name="log_media_player_manager_set">MediaPlayerManager set</string>
+    <string name="log_current_player_activity_set">Current player Activity set</string>
+    <string name="log_parse_time_string_failed">Parse time string failed: %s</string>
+    <string name="log_update_lastchange_status_error">Update LastChange status error</string>
+    <string name="log_update_playback_status_error">Update playback status error</string>
+    <string name="log_xml_parser_external_entity_warning">XML parser does not support feature: %s</string>
+    <string name="log_xml_reader_external_entity_warning">XMLReader does not support feature: %s</string>
+    <string name="log_create_xml_reader_failed">Create XMLReader failed</string>
+
+    <string name="log_set_uri_request">Set URI request: %s</string>
+    <string name="log_have_media_player_manager">Have MediaPlayerManager, updating URI</string>
+    <string name="log_have_player_activity">Have player Activity, will update URI</string>
+    <string name="log_play_request">Play request, speed: %s, URI: %s</string>
+    <string name="log_dlna_service_ensured">DLNA service ensured</string>
+    <string name="log_preparing_start_player">Preparing to start video player, URI: %s</string>
+    <string name="log_got_media_player_from_service">Got MediaPlayerManager from DLNA service</string>
+    <string name="log_player_activity_started">Video player Activity started</string>
+    <string name="log_player_activity_start_failed">Failed to start video player: %s</string>
+    <string name="log_no_uri_try_existing_player">No URI, try existing player</string>
+    <string name="log_cannot_play_no_uri_no_player">Cannot play: empty URI and no MediaPlayerManager</string>
+    <string name="log_play_failed">Play failed: %s</string>
+    <string name="log_pause_request">Pause request received</string>
+    <string name="log_stop_request">Stop request received</string>
+    <string name="log_seek_request">Seek request: unit=%s, target=%s</string>
+    <string name="log_seek_completed">Seek to %d sec</string>
+    <string name="log_get_position_info">Position: %s / %s</string>
+    <string name="log_playback_position_update">Cached position: %s / %s</string>
+
+    <string name="log_video_player_activity_oncreate">VideoPlayerActivity onCreate</string>
+    <string name="log_received_video_uri">Video URI: %s</string>
+    <string name="log_get_media_player_from_service">Get MediaPlayerManager from DLNAService</string>
+    <string name="log_create_new_media_player">Create new MediaPlayerManager</string>
+    <string name="log_video_player_activity_initialized">VideoPlayerActivity initialized</string>
+    <string name="log_surface_created">surfaceCreated</string>
+    <string name="log_init_play_video">Init play video: %s</string>
+    <string name="log_video_already_initialized">Video already initialized</string>
+    <string name="log_cannot_play_empty_uri">Cannot play: empty video URI</string>
+    <string name="log_surface_changed">surfaceChanged</string>
+    <string name="log_surface_destroyed">surfaceDestroyed</string>
+    <string name="log_playback_completed">onPlaybackCompleted</string>
+    <string name="log_on_prepared">onPrepared: %d</string>
+    <string name="log_on_buffering_update">onBufferingUpdate: %d</string>
+
+    <string name="log_main_activity_security_initialized">MainActivity: security XML parser initialized</string>
+    <string name="log_improve_process_importance">Improve process importance</string>
+    <string name="log_improve_process_importance_failed">Failed to improve importance</string>
+    <string name="log_main_activity_start_bind_service">MainActivity: start and bind DLNA service</string>
+    <string name="log_stop_dlna_service">Stop DLNA service</string>
+    <string name="dlna_service_running">DLNA service: Running</string>
+    <string name="dlna_service_stopped">DLNA service: Stopped</string>
+    <string name="start_service">Start service</string>
+    <string name="stop_service">Stop service</string>
+
+    <string name="log_set_media_player_manager">Set MediaPlayerManager</string>
+    <string name="log_set_volume">Set volume: %s</string>
+    <string name="log_set_mute">Set mute: %s</string>
+    <string name="log_mute_state_volume">Mute: %s, volume: %s</string>
+
+    <string name="log_lastchange_fire_failed">Failed to fire LastChange event</string>
+    <string name="log_lastchange_timer_started">LastChange event timer started</string>
+    <string name="log_wifi_multicast_lock_acquired">WiFi multicast lock acquired for cross-device discovery</string>
+    <string name="log_wifi_multicast_lock_acquire_failed">Failed to acquire WiFi multicast lock: %s</string>
+    <string name="log_wifi_multicast_lock_release">Release multicast lock: %s</string>
+
+    <string name="log_append_current_state_failed">Failed to append current state</string>
+    <string name="log_start_video_player_on_play">Starting video player on play</string>
+    <string name="log_get_position_info_call">GetPositionInfo: Track=%1$d, RelTime=%2$s, Duration=%3$s</string>
+
+    <string name="progress_duration_format">%1$s / %2$s</string>
+    <string name="log_video_size_changed">Video size: %1$d x %2$d</string>
+    <string name="log_video_size_invalid">Invalid video size: %1$d x %2$d</string>
+    <string name="log_screen_video_size">Screen: %1$d x %2$d, Video: %3$d x %4$d</string>
+    <string name="log_surface_view_adjusted">SurfaceView: %1$d x %2$d (video ratio: %3$.2f, screen: %4$.2f)</string>
+
+    <string name="play_pause">Play / Pause</string>
+    <string name="back">Back</string>
+    <string name="duration_placeholder">00:00 / 00:00</string>
+</resources>

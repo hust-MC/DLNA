@@ -26,6 +26,10 @@ import java.lang.ref.WeakReference
     serviceType = UpnpServiceType(value = "RenderingControl", version = 1)
 )
 class RenderingControlService(private val context: Context) {
+    init {
+        contextRef = WeakReference(context.applicationContext)
+    }
+
     companion object {
         private const val TAG = "RenderingControlService"
 
@@ -35,13 +39,20 @@ class RenderingControlService(private val context: Context) {
         /** 播放器管理器的弱引用，避免内存泄漏 */
         private var mediaPlayerManagerRef: WeakReference<MediaPlayerManager>? = null
 
+        /** 用于 Companion 内 getString 的 Context 弱引用 */
+        private var contextRef: WeakReference<Context>? = null
+
+        private fun getString(resId: Int, vararg formatArgs: Any): String {
+            return contextRef?.get()?.getString(resId, *formatArgs) ?: ""
+        }
+
         /**
          * 设置媒体播放器管理器
          *
          * @param manager MediaPlayerManager实例
          */
         fun setMediaPlayerManager(manager: MediaPlayerManager) {
-            Log.d(TAG, "设置MediaPlayerManager")
+            Log.d(TAG, getString(R.string.log_set_media_player_manager))
             mediaPlayerManagerRef = WeakReference(manager)
         }
     }
@@ -70,7 +81,7 @@ class RenderingControlService(private val context: Context) {
         @UpnpInputArgument(name = "Channel") channel: String,
         @UpnpInputArgument(name = "DesiredVolume") desiredVolume: UnsignedIntegerTwoBytes
     ) {
-        Log.d(TAG, "设置音量: ${desiredVolume.value}")
+        Log.d(TAG, context.getString(R.string.log_set_volume, desiredVolume.value.toString()))
         volume = desiredVolume
 
         // 转换音量：UPnP的0-100 → ExoPlayer的0.0-1.0
@@ -95,7 +106,7 @@ class RenderingControlService(private val context: Context) {
         // 静音时音量为0，取消静音时恢复当前音量
         val volumeFloat = if (desiredMute) 0f else (volume.value.toFloat() / MAX_VOLUME)
         mediaPlayerManagerRef?.get()?.setVolume(volumeFloat)
-        Log.d(TAG, "静音状态: $desiredMute, 音量设为: $volumeFloat")
+        Log.d(TAG, context.getString(R.string.log_mute_state_volume, desiredMute.toString(), volumeFloat.toString()))
     }
 
     /** 获取当前音量 */

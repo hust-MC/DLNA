@@ -79,7 +79,7 @@ class DLNAService : Service() {
     /** 服务创建回调 */
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "DLNA服务创建")
+        Log.d(TAG, getString(R.string.log_dlna_service_created))
 
         // 初始化MediaPlayerManager
         mediaPlayerManager = MediaPlayerManager(applicationContext)
@@ -97,7 +97,7 @@ class DLNAService : Service() {
         serviceConnection = object : ServiceConnection {
             /** 服务连接成功回调 */
             override fun onServiceConnected(name: ComponentName, service: IBinder) {
-                Log.d(TAG, "Upnp Service connected")
+                Log.d(TAG, getString(R.string.log_upnp_service_connected))
 
                 upnpService = service as AndroidUpnpService
                 // 注册设备
@@ -106,7 +106,7 @@ class DLNAService : Service() {
 
             /** 服务断开连接回调 */
             override fun onServiceDisconnected(name: ComponentName) {
-                Log.d(TAG, "Upnp Service Disconnected")
+                Log.d(TAG, getString(R.string.log_upnp_service_disconnected))
 
                 upnpService = null
                 release()
@@ -243,12 +243,12 @@ class DLNAService : Service() {
                     try {
                         mediaRendererServiceManager?.fireLastChange()
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to fire LastChange event", e)
+                        Log.e(TAG, getString(R.string.log_lastchange_fire_failed), e)
                     }
                 }
             }, 1000, 1000)
         }
-        Log.d(TAG, "LastChange event timer started")
+        Log.d(TAG, getString(R.string.log_lastchange_timer_started))
     }
 
     /** 服务绑定回调 */
@@ -258,7 +258,7 @@ class DLNAService : Service() {
 
     /** 服务销毁回调 */
     override fun onDestroy() {
-        Log.d(TAG, "Destroying DLNA service")
+        Log.d(TAG, getString(R.string.log_dlna_service_destroying))
 
         super.onDestroy()
         release()
@@ -280,9 +280,9 @@ class DLNAService : Service() {
         Thread {
             try {
                 upnpService?.registry?.shutdown()
-                Log.d(TAG, "UPnP服务已成功关闭")
+                Log.d(TAG, getString(R.string.log_upnp_service_closed))
             } catch (e: Exception) {
-                Log.e(TAG, "关闭UPnP服务时出错", e)
+                Log.e(TAG, getString(R.string.log_upnp_service_close_error), e)
             }
         }.start()
 
@@ -290,9 +290,9 @@ class DLNAService : Service() {
         serviceConnection?.let {
             try {
                 applicationContext.unbindService(it)
-                Log.d(TAG, "服务连接已解绑")
+                Log.d(TAG, getString(R.string.log_service_connection_unbound))
             } catch (e: Exception) {
-                Log.e(TAG, "解绑服务连接时出错", e)
+                Log.e(TAG, getString(R.string.log_service_connection_unbind_error), e)
             }
             serviceConnection = null
         }

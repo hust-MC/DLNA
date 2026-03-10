@@ -109,4 +109,29 @@
     <string name="log_set_media_player_manager">设置MediaPlayerManager</string>
     <string name="log_set_volume">设置音量: %s</string>
     <string name="log_set_mute">设置静音: %s</string>
+    <string name="log_mute_state_volume">静音状态: %s, 音量设为: %s</string>
+    
+    <!-- DLNAService 额外 -->
+    <string name="log_lastchange_fire_failed">Failed to fire LastChange event</string>
+    <string name="log_lastchange_timer_started">LastChange event timer started</string>
+    <string name="log_wifi_multicast_lock_acquired">WiFi multicast lock acquired for cross-device discovery</string>
+    <string name="log_wifi_multicast_lock_acquire_failed">Failed to acquire WiFi multicast lock: %s</string>
+    <string name="log_wifi_multicast_lock_release">Release multicast lock: %s</string>
+    
+    <!-- MediaRendererService 额外 -->
+    <string name="log_append_current_state_failed">Failed to append current state</string>
+    <string name="log_start_video_player_on_play">播放时启动视频播放页面</string>
+    <string name="log_get_position_info_call">GetPositionInfo调用: Track=%1$d, RelTime=%2$s, Duration=%3$s</string>
+    
+    <!-- VideoPlayerActivity -->
+    <string name="progress_duration_format">%1$s / %2$s</string>
+    <string name="log_video_size_changed">视频尺寸变化: %1$d x %2$d</string>
+    <string name="log_video_size_invalid">视频尺寸无效: %1$d x %2$d</string>
+    <string name="log_screen_video_size">屏幕尺寸: %1$d x %2$d, 视频尺寸: %3$d x %4$d</string>
+    <string name="log_surface_view_adjusted">SurfaceView调整为: %1$d x %2$d (视频比例: %3$.2f, 屏幕比例: %4$.2f)</string>
+    
+    <!-- 布局 / 通用 -->
+    <string name="play_pause">播放/暂停</string>
+    <string name="back">返回</string>
+    <string name="duration_placeholder">00:00 / 00:00</string>
 </resources>

@@ -117,7 +117,7 @@ class MainActivity : Activity() {
      * 启动DLNA服务
      */
     private fun startDLNAService() {
-        Log.d(TAG, "启动DLNA服务")
+        Log.d(TAG, getString(R.string.log_main_activity_start_bind_service))
         val intent = Intent(this, DLNAService::class.java)
         bindService(intent, connection, Context.BIND_AUTO_CREATE)
     }
@@ -126,7 +126,7 @@ class MainActivity : Activity() {
      * 停止DLNA服务
      */
     private fun stopDLNAService() {
-        Log.d(TAG, "停止DLNA服务")
+        Log.d(TAG, getString(R.string.log_stop_dlna_service))
         unbindService(connection)
         bound = false
         updateUI()
@@ -140,11 +140,11 @@ class MainActivity : Activity() {
      */
     private fun updateUI() {
         if (bound) {
-            statusText.text = "DLNA服务状态：运行中"
-            startButton.text = "停止服务"
+            statusText.text = getString(R.string.dlna_service_running)
+            startButton.text = getString(R.string.stop_service)
         } else {
-            statusText.text = "DLNA服务状态：已停止"
-            startButton.text = "启动服务"
+            statusText.text = getString(R.string.dlna_service_stopped)
+            startButton.text = getString(R.string.start_service)
         }
     }
 

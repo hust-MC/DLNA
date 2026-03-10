@@ -178,7 +178,7 @@ class VideoPlayerActivity : Activity(),
 
                 val positionStr = formatTime(position)
                 val durationStr = formatTime(duration)
-                tvDuration.text = "$positionStr / $durationStr"
+                tvDuration.text = getString(R.string.progress_duration_format, positionStr, durationStr)
             }
         }
     }
@@ -255,7 +255,7 @@ class VideoPlayerActivity : Activity(),
     }
 
     override fun onPlaybackCompleted() {
-        Log.d(TAG, "onPlaybackCompleted")
+        Log.d(TAG, getString(R.string.log_playback_completed))
     }
 
     fun onDurationChanged(durationMs: Int) {
@@ -265,7 +265,7 @@ class VideoPlayerActivity : Activity(),
     }
 
     override fun onPrepared(durationMs: Int) {
-        Log.d(TAG, "onPrepared: $durationMs")
+        Log.d(TAG, getString(R.string.log_on_prepared, durationMs))
     }
 
     override fun onProgressUpdate(positionMs: Int) {
@@ -277,11 +277,11 @@ class VideoPlayerActivity : Activity(),
     }
 
     override fun onBufferingUpdate(percent: Int) {
-        Log.d(TAG, "onBufferingUpdate: $percent")
+        Log.d(TAG, getString(R.string.log_on_buffering_update, percent))
     }
     
     override fun onVideoSizeChanged(width: Int, height: Int) {
-        Log.d(TAG, "视频尺寸变化: ${width}x${height}")
+        Log.d(TAG, getString(R.string.log_video_size_changed, width, height))
         videoWidth = width
         videoHeight = height
         
@@ -297,7 +297,7 @@ class VideoPlayerActivity : Activity(),
      */
     private fun adjustSurfaceViewSize() {
         if (videoWidth == 0 || videoHeight == 0) {
-            Log.w(TAG, "视频尺寸无效: ${videoWidth}x${videoHeight}")
+            Log.w(TAG, getString(R.string.log_video_size_invalid, videoWidth, videoHeight))
             return
         }
 
@@ -306,7 +306,7 @@ class VideoPlayerActivity : Activity(),
         val screenWidth = displayMetrics.widthPixels
         val screenHeight = displayMetrics.heightPixels
         
-        Log.d(TAG, "屏幕尺寸: ${screenWidth}x${screenHeight}, 视频尺寸: ${videoWidth}x${videoHeight}")
+        Log.d(TAG, getString(R.string.log_screen_video_size, screenWidth, screenHeight, videoWidth, videoHeight))
         
         // 计算视频和屏幕的宽高比
         val videoAspectRatio = videoWidth.toFloat() / videoHeight.toFloat()
@@ -331,7 +331,7 @@ class VideoPlayerActivity : Activity(),
             height = surfaceHeight
         }
         
-        Log.d(TAG, "SurfaceView调整为: ${surfaceWidth}x${surfaceHeight} (视频比例: %.2f, 屏幕比例: %.2f)".format(videoAspectRatio, screenAspectRatio))
+        Log.d(TAG, getString(R.string.log_surface_view_adjusted, surfaceWidth, surfaceHeight, videoAspectRatio, screenAspectRatio))
     }
 
     // 用于DLNA控制器调用的方法
@@ -356,7 +356,7 @@ class VideoPlayerActivity : Activity(),
 
     private inner class VideoSurfaceCallback : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) {
-            Log.d(TAG, "surfaceCreated")
+            Log.d(TAG, getString(R.string.log_surface_created))
             // 当Surface创建后，将其设置给MediaPlayerManager
             mediaPlayerManager?.setSurface(holder.surface)
 
@@ -369,14 +369,14 @@ class VideoPlayerActivity : Activity(),
         }
 
         override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-            Log.d(TAG, "surfaceChanged")
+            Log.d(TAG, getString(R.string.log_surface_changed))
 
             // Surface尺寸或格式变化时，更新Surface
             mediaPlayerManager?.setSurface(holder.surface)
         }
 
         override fun surfaceDestroyed(holder: SurfaceHolder) {
-            Log.d(TAG, "surfaceDestroyed")
+            Log.d(TAG, getString(R.string.log_surface_destroyed))
 
             // Surface销毁时，清除播放器的Surface
             mediaPlayerManager?.setSurface(null)
