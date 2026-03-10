@@ -297,6 +297,6 @@ class DLNAService : Service() {
             serviceConnection = null
         }
 
-        stopForeground(true)
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 } 

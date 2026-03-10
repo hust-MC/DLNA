@@ -9,8 +9,10 @@ import android.os.Looper
 import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.os.Build
 import android.view.View
 import android.view.WindowManager
+import androidx.core.view.WindowCompat
 import android.widget.ImageButton
 import android.widget.SeekBar
 import android.widget.TextView
@@ -75,9 +77,18 @@ class VideoPlayerActivity : Activity(),
         // 设置屏幕常亮
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // 隐藏状态栏和导航栏，实现全屏效果
-        window.decorView.systemUiVisibility =
-            (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+        // 隐藏状态栏和导航栏，实现全屏效果（API 30+ 使用 WindowInsetsController，避免弃用警告）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.apply {
+                hide(android.view.WindowInsets.Type.systemBars())
+                systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility =
+                (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+        }
 
         videoUri = intent.getStringExtra(EXTRA_VIDEO_URI) ?: ""
 
@@ -92,10 +103,11 @@ class VideoPlayerActivity : Activity(),
 
         // 注册当前Activity到MediaRendererService
         MediaRendererService.setPlayerActivity(this)
-        // 将MediaPlayerManager设置到MediaRendererService
-        MediaRendererService.setMediaPlayerManager(mediaPlayerManager!!)
-        // 将MediaPlayerManager设置到RenderingControlService（用于音量控制）
-        RenderingControlService.setMediaPlayerManager(mediaPlayerManager!!)
+        // 将MediaPlayerManager设置到MediaRendererService 与 RenderingControlService（initMediaPlayerManager 后非空）
+        mediaPlayerManager?.let { manager ->
+            MediaRendererService.setMediaPlayerManager(manager)
+            RenderingControlService.setMediaPlayerManager(manager)
+        }
 
 
     }

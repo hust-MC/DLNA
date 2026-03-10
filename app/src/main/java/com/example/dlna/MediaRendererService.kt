@@ -479,8 +479,8 @@ class MediaRendererService : LastChangeDelegator {
         // 更新状态
         this.currentTransportState = "PLAYING"
 
-        // 使用Handler确保在主线程上调用播放
-        Handler(Looper.getMainLooper()).post {
+        // 使用 mainHandler 确保在主线程上调用播放
+        mainHandler.post {
             try {
                 // 如果尚未打开播放页面，则启动视频播放页面
                 if (avTransportURI.isNotEmpty()) {
@@ -521,7 +521,7 @@ class MediaRendererService : LastChangeDelegator {
         currentTransportState = "PAUSED_PLAYBACK"
 
         // 在主线程上暂停播放
-        Handler(Looper.getMainLooper()).post {
+        mainHandler.post {
             mediaPlayerManagerRef?.get()?.pause()
         }
     }
@@ -540,7 +540,7 @@ class MediaRendererService : LastChangeDelegator {
         currentTransportState = "STOPPED"
 
         // 在主线程上停止播放
-        Handler(Looper.getMainLooper()).post {
+        mainHandler.post {
             mediaPlayerManagerRef?.get()?.stop()
         }
     }
@@ -567,7 +567,7 @@ class MediaRendererService : LastChangeDelegator {
             val timeMs = parseTimeString(target)
 
             // 在主线程上执行跳转
-            Handler(Looper.getMainLooper()).post {
+            mainHandler.post {
                 mediaPlayerManagerRef?.get()?.seekTo(timeMs)
             }
 
