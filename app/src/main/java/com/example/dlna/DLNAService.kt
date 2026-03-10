@@ -121,7 +121,10 @@ class DLNAService : Service() {
         )
     }
 
-    /** 创建通知通道 */
+    /**
+     * 创建前台服务通知通道（Android 8.0+ 必须），用于归类通知。
+     * 无参数，无返回值。
+     */
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -136,7 +139,12 @@ class DLNAService : Service() {
         }
     }
 
-    /** 创建通知 */
+    /**
+     * 创建前台服务通知。
+     * 点击通知可回到 MainActivity。
+     *
+     * @return 构建好的 Notification 实例
+     */
     private fun createNotification(): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -155,9 +163,13 @@ class DLNAService : Service() {
             .build()
     }
 
-    /** 创建UPnP设备 */
+    /**
+     * 创建并注册 UPnP 媒体渲染设备（AVTransport + RenderingControl），供控制点发现与操控。
+     * 无参数，无返回值。
+     */
     private fun createDevice() {
         try {
+            // 设备类型：MediaRenderer 版本 1
             val type = UDADeviceType("MediaRenderer", 1)
             val details = DeviceDetails(
                 getString(R.string.device_friendly_name),  // 设备名称将显示在爱奇艺的设备列表中
@@ -251,12 +263,19 @@ class DLNAService : Service() {
         Log.d(TAG, getString(R.string.log_lastchange_timer_started))
     }
 
-    /** 服务绑定回调 */
+    /**
+     * 服务绑定回调。Activity 通过 Binder 获取 DLNAService 实例。
+     *
+     * @param intent 绑定请求的 Intent
+     * @return LocalBinder，用于 getService() 获取本服务
+     */
     override fun onBind(intent: Intent): IBinder {
         return binder
     }
 
-    /** 服务销毁回调 */
+    /**
+     * 服务销毁回调。先释放资源再调用 super。
+     */
     override fun onDestroy() {
         Log.d(TAG, getString(R.string.log_dlna_service_destroying))
 
@@ -264,19 +283,23 @@ class DLNAService : Service() {
         release()
     }
 
+    /**
+     * 释放服务占用的资源：定时器、播放器、UPnP 设备与连接。
+     * 在 onDestroy 或 onServiceDisconnected 时调用。
+     */
     private fun release() {
-        // 停止 LastChange 定时器
+        // 停止 LastChange 定时器，避免继续回调
         lastChangeTimer?.cancel()
         lastChangeTimer = null
         
-        // 释放媒体播放器
+        // 释放媒体播放器（ExoPlayer 等）
         mediaPlayerManager.release()
 
-        // 移除所有本地和远程设备
+        // 从 UPnP 注册表移除设备，使控制点不再发现本机
         upnpService?.registry?.removeAllRemoteDevices()
         upnpService?.registry?.removeAllLocalDevices()
 
-        // 关闭UPnP服务
+        // 在子线程关闭 UPnP 服务，避免阻塞主线程
         Thread {
             try {
                 upnpService?.registry?.shutdown()

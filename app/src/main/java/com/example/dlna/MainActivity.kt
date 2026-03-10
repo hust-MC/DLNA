@@ -90,11 +90,10 @@ class MainActivity : Activity() {
     }
 
     /**
-     * 活动创建生命周期回调
-     * 
-     * 初始化UI组件并设置事件监听器。
-     * 
-     * @param savedInstanceState 保存的实例状态
+     * 活动创建生命周期回调，初始化 UI 并设置启停按钮监听。
+     *
+     * @param savedInstanceState 保存的实例状态（可为 null）
+     * 无返回值。
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -114,7 +113,8 @@ class MainActivity : Activity() {
     }
 
     /**
-     * 启动DLNA服务
+     * 通过 bindService 启动并绑定 DLNA 服务，连接成功后由 connection 回调更新 UI。
+     * 无参数，无返回值。
      */
     private fun startDLNAService() {
         Log.d(TAG, getString(R.string.log_main_activity_start_bind_service))
@@ -123,7 +123,8 @@ class MainActivity : Activity() {
     }
 
     /**
-     * 停止DLNA服务
+     * 解绑 DLNA 服务并更新 UI 状态。
+     * 无参数，无返回值。
      */
     private fun stopDLNAService() {
         Log.d(TAG, getString(R.string.log_stop_dlna_service))
@@ -133,10 +134,8 @@ class MainActivity : Activity() {
     }
 
     /**
-     * 更新用户界面
-     * 
-     * 根据服务的绑定状态更新UI元素，
-     * 包括状态文本和按钮标签
+     * 根据当前是否已绑定 DLNA 服务，更新状态文案与按钮文字（运行中/已停止、启动/停止）。
+     * 无参数，无返回值。
      */
     private fun updateUI() {
         if (bound) {
@@ -149,9 +148,8 @@ class MainActivity : Activity() {
     }
 
     /**
-     * 活动销毁生命周期回调
-     * 
-     * 在活动被销毁前，确保解绑服务以防止内存泄漏
+     * 活动销毁前解绑 DLNA 服务，防止泄漏。
+     * 无参数，无返回值。
      */
     override fun onDestroy() {
         super.onDestroy()

@@ -47,9 +47,10 @@ class RenderingControlService(private val context: Context) {
         }
 
         /**
-         * 设置媒体播放器管理器
+         * 设置媒体播放器管理器，供后续音量/静音控制使用。
          *
-         * @param manager MediaPlayerManager实例
+         * @param manager MediaPlayerManager 实例，用于 setVolume
+         * 无返回值。
          */
         fun setMediaPlayerManager(manager: MediaPlayerManager) {
             Log.d(TAG, getString(R.string.log_set_media_player_manager))
@@ -74,7 +75,14 @@ class RenderingControlService(private val context: Context) {
     private var channel: String? = null
 
 
-    /** 设置音量 */
+    /**
+     * 设置音量（UPnP SetVolume）。将 UPnP 0～100 转为 ExoPlayer 0.0～1.0 并下发。
+     *
+     * @param instanceId    实例 ID（本实现未使用）
+     * @param channel       声道（如 Master）
+     * @param desiredVolume 目标音量 0～100
+     * 无返回值。
+     */
     @UpnpAction
     fun setVolume(
         @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
@@ -93,7 +101,14 @@ class RenderingControlService(private val context: Context) {
         }
     }
 
-    /** 设置静音状态 */
+    /**
+     * 设置静音状态（UPnP SetMute）。静音时下发 0，取消静音时恢复当前音量比例。
+     *
+     * @param instanceId  实例 ID（未使用）
+     * @param channel     声道（未使用）
+     * @param desiredMute true 静音，false 取消静音
+     * 无返回值。
+     */
     @UpnpAction
     fun setMute(
         @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
@@ -109,7 +124,13 @@ class RenderingControlService(private val context: Context) {
         Log.d(TAG, context.getString(R.string.log_mute_state_volume, desiredMute.toString(), volumeFloat.toString()))
     }
 
-    /** 获取当前音量 */
+    /**
+     * 获取当前音量（UPnP GetVolume）。
+     *
+     * @param instanceId 实例 ID（未使用）
+     * @param channel    声道（未使用）
+     * @return 当前音量 0～100（UnsignedIntegerTwoBytes）
+     */
     @UpnpAction(out = [UpnpOutputArgument(name = "CurrentVolume")])
     fun getVolume(
         @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,
@@ -118,7 +139,13 @@ class RenderingControlService(private val context: Context) {
         return volume
     }
 
-    /** 获取当前静音状态 */
+    /**
+     * 获取当前静音状态（UPnP GetMute）。
+     *
+     * @param instanceId 实例 ID（未使用）
+     * @param channel    声道（未使用）
+     * @return 当前是否静音
+     */
     @UpnpAction(out = [UpnpOutputArgument(name = "CurrentMute")])
     fun getMute(
         @UpnpInputArgument(name = "InstanceID") instanceId: UnsignedIntegerFourBytes,

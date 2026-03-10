@@ -20,18 +20,28 @@ import com.max.videoplayer.MediaPlayerManager
 import java.util.Locale
 
 /**
- * 视频播放器Activity
- * 用于显示DLNA投屏的视频内容
+ * 视频播放器 Activity，用于展示 DLNA 投屏的视频画面。
+ *
+ * 由 [MediaRendererService.play] 在收到控制点播放请求时启动，接收投屏 URI，
+ * 通过 [MediaPlayerManager]（ExoPlayer）解码并渲染到 SurfaceView。
+ * 同时将播放器与 Activity 注册到 [MediaRendererService] / [RenderingControlService]，
+ * 以便远程控制播放、暂停、停止、跳转与音量。
+ *
+ * @author Max
  */
 class VideoPlayerActivity : Activity(),
     MediaPlayerManager.MediaStateListener {
 
     companion object {
         private const val TAG = "VideoPlayerActivity"
+        /** Intent 中携带的视频 URI 的 key */
         private const val EXTRA_VIDEO_URI = "extra_video_uri"
 
         /**
-         * 启动播放器Activity的静态方法
+         * 以新任务方式启动视频播放页并传入投屏 URI。
+         *
+         * @param context 应用上下文（建议 ApplicationContext）
+         * @param videoUri 要播放的媒体 URI（如 M3U8、MP4 地址）
          */
         fun start(context: Context, videoUri: String) {
             val intent = Intent(context, VideoPlayerActivity::class.java).apply {
@@ -42,18 +52,26 @@ class VideoPlayerActivity : Activity(),
         }
     }
 
+    /** 视频渲染 Surface */
     private lateinit var surfaceView: SurfaceView
+    /** 进度条 */
     private lateinit var seekBar: SeekBar
+    /** 当前进度/总时长文本（如 00:00 / 00:00） */
     private lateinit var tvDuration: TextView
+    /** 播放/暂停按钮 */
     private lateinit var btnPlayPause: ImageButton
+    /** 返回按钮 */
     private lateinit var btnBack: ImageButton
 
+    /** 本次要播放的视频 URI（来自 DLNA 控制点） */
     private var videoUri: String = ""
+    /** 主线程 Handler，用于进度更新与 UI 回调 */
     private val handler = Handler(Looper.getMainLooper())
     
-    // 视频尺寸
+    /** 视频宽高（用于按比例适配 SurfaceView） */
     private var videoWidth: Int = 0
     private var videoHeight: Int = 0
+    /** 每秒执行一次，刷新 SeekBar 与时长显示 */
     private val updateSeekBarRunnable = object : Runnable {
         override fun run() {
             updateProgress()
@@ -61,15 +79,21 @@ class VideoPlayerActivity : Activity(),
         }
     }
 
-    // 本地持有的MediaPlayerManager实例
+    /** 本页持有的播放器实例，与 MediaRendererService 共享同一引用 */
     private var mediaPlayerManager: MediaPlayerManager? = null
 
-    // 记录后台时的播放状态和位置
+    /** 进入后台前是否在播放，用于 onResume 时恢复播放 */
     private var wasPlayingBeforeBackground = false
 
-    // 添加一个标志，记录视频是否已经初始化过
+    /** 是否已对当前 URI 执行过 setMediaURIAndPlay，避免 Surface 重建时重复播放 */
     private var isVideoInitialized = false
 
+    /**
+     * 初始化全屏、常亮、Surface 与播放器，并注册到 MediaRendererService / RenderingControlService。
+     *
+     * @param savedInstanceState 保存的实例状态（可为 null）
+     * 无返回值。
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_video_player)
@@ -112,12 +136,20 @@ class VideoPlayerActivity : Activity(),
 
     }
 
+    /**
+     * 创建 MediaPlayerManager 并设置本 Activity 为状态监听器。
+     * 无参数，无返回值。
+     */
     private fun initMediaPlayerManager() {
         mediaPlayerManager = MediaPlayerManager(this).apply {
             setStateListener(this@VideoPlayerActivity)
         }
     }
 
+    /**
+     * 绑定布局中的 SurfaceView、SeekBar、时长文本、播放/暂停与返回按钮。
+     * 无参数，无返回值。
+     */
     private fun initViews() {
         surfaceView = findViewById(R.id.playerSurfaceView)
         seekBar = findViewById(R.id.seekBar)
@@ -126,6 +158,10 @@ class VideoPlayerActivity : Activity(),
         btnBack = findViewById(R.id.btnBack)
     }
 
+    /**
+     * 为播放/暂停、返回、SeekBar 设置点击与拖动监听；用户拖动进度条时暂停定时刷新。
+     * 无参数，无返回值。
+     */
     private fun setupListeners() {
         btnPlayPause.setOnClickListener {
             togglePlayPause()
@@ -155,6 +191,10 @@ class VideoPlayerActivity : Activity(),
         })
     }
 
+    /**
+     * 根据当前播放状态切换播放/暂停，并更新播放/暂停按钮图标。
+     * 无参数，无返回值。
+     */
     private fun togglePlayPause() {
         mediaPlayerManager?.let { player ->
             if (player.getCurrentState() == MediaPlayerManager.PlaybackState.PLAYING) {
@@ -167,6 +207,10 @@ class VideoPlayerActivity : Activity(),
         }
     }
 
+    /**
+     * 从播放器读取当前进度与时长，刷新 SeekBar 和时长文本（如 00:00 / 00:00）。
+     * 无参数，无返回值。
+     */
     private fun updateProgress() {
         mediaPlayerManager?.let { player ->
             val position = player.getCurrentPosition()
@@ -183,6 +227,12 @@ class VideoPlayerActivity : Activity(),
         }
     }
 
+    /**
+     * 将毫秒时长格式化为 HH:MM:SS 字符串。
+     *
+     * @param timeMs 毫秒数
+     * @return 如 "01:23:45" 的字符串
+     */
     private fun formatTime(timeMs: Int): String {
         val totalSeconds = timeMs / 1000
         val hours = totalSeconds / 3600
@@ -191,9 +241,12 @@ class VideoPlayerActivity : Activity(),
         return String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
     }
 
+    /**
+     * 恢复时启动进度刷新；若进入后台前在播放则继续播放。
+     * 无参数，无返回值。
+     */
     override fun onResume() {
         super.onResume()
-        // 开始定时更新进度
         handler.post(updateSeekBarRunnable)
 
         // 如果之前是播放状态，则恢复播放位置并继续播放
@@ -215,12 +268,13 @@ class VideoPlayerActivity : Activity(),
         }
     }
 
+    /**
+     * 进入后台时停止进度刷新；若正在播放则暂停并记录状态，便于 onResume 恢复。
+     * 无参数，无返回值。
+     */
     override fun onPause() {
         super.onPause()
-        // 停止定时更新进度
         handler.removeCallbacks(updateSeekBarRunnable)
-
-        // 记录当前播放状态和位置，并暂停
         mediaPlayerManager?.let { player ->
             wasPlayingBeforeBackground = player.getCurrentState() == MediaPlayerManager.PlaybackState.PLAYING
             if (wasPlayingBeforeBackground) {
@@ -230,14 +284,21 @@ class VideoPlayerActivity : Activity(),
         }
     }
 
+    /**
+     * 销毁时释放 MediaPlayerManager，避免泄漏。
+     * 无参数，无返回值。
+     */
     override fun onDestroy() {
         super.onDestroy()
-        // 释放MediaPlayerManager资源
         mediaPlayerManager?.release()
         mediaPlayerManager = null
     }
 
-    // MediaStateListener接口实现
+    /**
+     * 播放状态变化时同步更新播放/暂停按钮图标。
+     *
+     * @param state 当前播放状态（PLAYING/PAUSED/STOPPED/ERROR）
+     */
     override fun onPlaybackStateChanged(state: MediaPlayerManager.PlaybackState) {
         runOnUiThread {
             when (state) {
@@ -254,46 +315,74 @@ class VideoPlayerActivity : Activity(),
         }
     }
 
+    /**
+     * 播放结束时回调，可用于记录日志或后续扩展（如自动关页）。
+     */
     override fun onPlaybackCompleted() {
         Log.d(TAG, getString(R.string.log_playback_completed))
     }
 
+    /**
+     * 媒体时长就绪时设置 SeekBar 的最大值。
+     *
+     * @param durationMs 媒体总时长（毫秒）
+     */
     fun onDurationChanged(durationMs: Int) {
         runOnUiThread {
             seekBar.max = durationMs
         }
     }
 
+    /**
+     * 媒体准备就绪回调，可获取时长并开始播放。
+     *
+     * @param durationMs 媒体总时长（毫秒）
+     */
     override fun onPrepared(durationMs: Int) {
         Log.d(TAG, getString(R.string.log_on_prepared, durationMs))
     }
 
-    override fun onProgressUpdate(positionMs: Int) {
-        // 这里不需要处理，因为我们已经有了updateProgress方法
-    }
+    /**
+     * 播放进度更新回调。本页已通过 updateProgress 定时刷新，此处可空实现。
+     *
+     * @param positionMs 当前播放位置（毫秒）
+     */
+    override fun onProgressUpdate(positionMs: Int) {}
 
-    override fun onError(errorMsg: String) {
-        // 可以在这里添加错误处理逻辑，比如显示Toast提示用户
-    }
+    /**
+     * 播放出错时的回调，可在此显示 Toast 等提示。
+     *
+     * @param errorMsg 错误信息
+     */
+    override fun onError(errorMsg: String) {}
 
+    /**
+     * 缓冲进度百分比更新。
+     *
+     * @param percent 缓冲进度 0～100
+     */
     override fun onBufferingUpdate(percent: Int) {
         Log.d(TAG, getString(R.string.log_on_buffering_update, percent))
     }
     
+    /**
+     * 视频尺寸已知后保存宽高，并在主线程中按比例调整 SurfaceView。
+     *
+     * @param width  视频宽度（像素）
+     * @param height 视频高度（像素）
+     */
     override fun onVideoSizeChanged(width: Int, height: Int) {
         Log.d(TAG, getString(R.string.log_video_size_changed, width, height))
         videoWidth = width
         videoHeight = height
-        
-        // 调整SurfaceView大小以适配视频，保持宽高比不拉伸
-        runOnUiThread {
-            adjustSurfaceViewSize()
-        }
+        runOnUiThread { adjustSurfaceViewSize() }
     }
     
     /**
-     * 调整SurfaceView大小以适配视频宽高比
-     * 在屏幕中居中显示，不拉伸变形
+     * 按视频宽高比调整 SurfaceView 尺寸，在屏幕内居中、不拉伸。
+     * 视频更宽时以屏幕宽度为准留上下黑边，更高时以屏幕高度为准留左右黑边。
+     *
+     * 无参数，无返回值。
      */
     private fun adjustSurfaceViewSize() {
         if (videoWidth == 0 || videoHeight == 0) {
@@ -334,51 +423,80 @@ class VideoPlayerActivity : Activity(),
         Log.d(TAG, getString(R.string.log_surface_view_adjusted, surfaceWidth, surfaceHeight, videoAspectRatio, screenAspectRatio))
     }
 
-    // 用于DLNA控制器调用的方法
+    /**
+     * 供 MediaRendererService 远程调用：从当前进度继续播放，并更新按钮图标。
+     * 无参数，无返回值。
+     */
     fun playFromDLNA() {
         mediaPlayerManager?.play()
         btnPlayPause.setImageResource(android.R.drawable.ic_media_pause)
     }
 
+    /**
+     * 供 DLNA 远程调用：暂停播放并更新按钮图标。
+     * 无参数，无返回值。
+     */
     fun pauseFromDLNA() {
         mediaPlayerManager?.pause()
         btnPlayPause.setImageResource(android.R.drawable.ic_media_play)
     }
 
+    /**
+     * 供 DLNA 远程调用：停止播放并更新按钮图标。
+     * 无参数，无返回值。
+     */
     fun stopFromDLNA() {
         mediaPlayerManager?.stop()
         btnPlayPause.setImageResource(android.R.drawable.ic_media_play)
     }
 
+    /**
+     * 供 DLNA 远程调用：跳转到指定毫秒位置。
+     *
+     * @param positionMs 目标位置（毫秒）
+     */
     fun seekFromDLNA(positionMs: Int) {
         mediaPlayerManager?.seekTo(positionMs)
     }
 
+    /**
+     * Surface 生命周期回调：在 Surface 创建/变更时交给播放器，首次创建时开始播放。
+     */
     private inner class VideoSurfaceCallback : SurfaceHolder.Callback {
+        /**
+         * Surface 创建后设置给播放器；仅首次创建时设置 URI 并播放，避免重复。
+         *
+         * @param holder 当前 Surface 的 Holder
+         */
         override fun surfaceCreated(holder: SurfaceHolder) {
             Log.d(TAG, getString(R.string.log_surface_created))
-            // 当Surface创建后，将其设置给MediaPlayerManager
             mediaPlayerManager?.setSurface(holder.surface)
-
-            // 只有在第一次初始化时才设置媒体URI并播放
             if (!isVideoInitialized) {
-                // 设置URI并播放
                 mediaPlayerManager?.setMediaURIAndPlay(videoUri)
                 isVideoInitialized = true
             }
         }
 
+        /**
+         * Surface 尺寸或格式变化时，将新 Surface 交给播放器。
+         *
+         * @param holder  SurfaceHolder
+         * @param format  像素格式
+         * @param width   宽度
+         * @param height  高度
+         */
         override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             Log.d(TAG, getString(R.string.log_surface_changed))
-
-            // Surface尺寸或格式变化时，更新Surface
             mediaPlayerManager?.setSurface(holder.surface)
         }
 
+        /**
+         * Surface 销毁时清除播放器上的 Surface，避免渲染异常。
+         *
+         * @param holder SurfaceHolder
+         */
         override fun surfaceDestroyed(holder: SurfaceHolder) {
             Log.d(TAG, getString(R.string.log_surface_destroyed))
-
-            // Surface销毁时，清除播放器的Surface
             mediaPlayerManager?.setSurface(null)
         }
     }

@@ -23,14 +23,17 @@ class CustomAVTransportLastChangeParser : AVTransportLastChangeParser() {
     }
     
     /**
-     * 禁用XML架构验证
-     * Android环境下可能没有对应的XSD文件
+     * 禁用 XML 架构验证。Android 环境下可能没有对应 XSD 文件。
+     *
+     * @return null 表示不进行架构验证
      */
     override fun getSchemaSources() = null
 
     /**
-     * 创建兼容Android的XML解析器
-     * 避免设置Android不支持的XML特性
+     * 创建兼容 Android 的 XML 解析器，避免设置 Android 不支持的 XML 特性（如 disallow-doctype-decl）。
+     *
+     * @return 配置好的 XMLReader 实例
+     * @throws RuntimeException 若创建失败
      */
     override fun create(): org.xml.sax.XMLReader {
         try {
@@ -53,7 +56,11 @@ class CustomAVTransportLastChangeParser : AVTransportLastChangeParser() {
     }
     
     /**
-     * 尝试在SAXParserFactory上设置安全特性
+     * 在 SAXParserFactory 上尝试设置安全特性（禁用外部实体），避免 XXE。
+     * 若平台不支持则忽略异常。
+     *
+     * @param factory SAX 解析器工厂
+     * 无返回值。
      */
     private fun trySetSecurityFeature(factory: javax.xml.parsers.SAXParserFactory) {
         try {
@@ -65,7 +72,10 @@ class CustomAVTransportLastChangeParser : AVTransportLastChangeParser() {
     }
     
     /**
-     * 尝试在XMLReader上设置安全特性
+     * 在 XMLReader 上尝试设置安全特性（禁用外部实体）。
+     *
+     * @param reader XMLReader 实例
+     * 无返回值。
      */
     private fun trySetSecurityFeature(reader: org.xml.sax.XMLReader) {
         try {

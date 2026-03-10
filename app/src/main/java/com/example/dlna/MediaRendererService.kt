@@ -69,34 +69,40 @@ class MediaRendererService : LastChangeDelegator {
         private val INSTANCE_ID = UnsignedIntegerFourBytes(0)
 
         /**
-         * 获取Context
+         * 获取应用上下文，用于 getString 等。
          *
-         * @return applicationContext或null
+         * @return applicationContext，未初始化时为 null
          */
         private fun getContext(): Context? {
             return appContext?.get()
         }
 
         /**
-         * 获取字符串资源
+         * 获取字符串资源。
+         *
+         * @param resId 字符串资源 id
+         * @return 对应文案，无 Context 时返回空串
          */
         private fun getString(resId: Int): String {
             return getContext()?.getString(resId) ?: ""
         }
 
         /**
-         * 获取格式化字符串资源
+         * 获取带占位符的字符串资源。
+         *
+         * @param resId      字符串资源 id
+         * @param formatArgs 占位符参数
+         * @return 格式化后的文案
          */
         private fun getString(resId: Int, vararg formatArgs: Any): String {
             return getContext()?.getString(resId, *formatArgs) ?: ""
         }
 
         /**
-         * 初始化服务
+         * 初始化服务：设置应用上下文并启动状态更新定时器。
          *
-         * 设置应用上下文并初始化媒体播放器
-         *
-         * @param context 应用上下文
+         * @param context 应用上下文（建议 ApplicationContext）
+         * 无返回值。
          */
         fun initialize(context: Context) {
             appContext = WeakReference(context.applicationContext)
@@ -111,9 +117,10 @@ class MediaRendererService : LastChangeDelegator {
         }
 
         /**
-         * 设置媒体播放器管理器
+         * 设置媒体播放器管理器，供播放/暂停/停止/跳转等动作使用。
          *
          * @param manager 媒体播放器管理器实例
+         * 无返回值。
          */
         fun setMediaPlayerManager(manager: MediaPlayerManager) {
             mediaPlayerManagerRef = WeakReference(manager)
@@ -130,9 +137,10 @@ class MediaRendererService : LastChangeDelegator {
         }
 
         /**
-         * 设置当前播放Activity
+         * 设置当前播放 Activity，供 play 等动作启动或联动界面。
          *
-         * @param activity 视频播放Activity实例
+         * @param activity 视频播放 Activity 实例
+         * 无返回值。
          */
         fun setPlayerActivity(activity: VideoPlayerActivity) {
             playerActivityRef = WeakReference(activity)
@@ -187,8 +195,8 @@ class MediaRendererService : LastChangeDelegator {
         private var statusUpdateTimer: Timer? = null
 
         /**
-         * 开始状态更新定时器
-         * 用于定期更新播放状态和进度信息
+         * 启动状态更新定时器，每秒从播放器拉取状态与进度并写入 UPnP 状态变量。
+         * 无参数，无返回值。
          */
         private fun startStatusUpdateTimer() {
             statusUpdateTimer?.cancel()
@@ -202,7 +210,8 @@ class MediaRendererService : LastChangeDelegator {
         }
 
         /**
-         * 更新播放状态和进度
+         * 在主线程从播放器读取状态与进度，更新 currentTransportState、relativeTimePosition 等状态变量。
+         * 无参数，无返回值。
          */
         private fun updatePlaybackStatus() {
             try {
@@ -355,6 +364,7 @@ class MediaRendererService : LastChangeDelegator {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // A_ARG_TYPE 参数类型变量（UPnP规范要求，用于动作参数类型声明）
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━ A_ARG_TYPE 参数类型（用于 Seek 等动作的输入参数声明）
     @UpnpStateVariable(sendEvents = false, name = "A_ARG_TYPE_SeekMode")
     private var argTypeSeekMode: String = "REL_TIME"
 
@@ -365,26 +375,29 @@ class MediaRendererService : LastChangeDelegator {
     private var argTypeInstanceID: UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(0)
 
     /**
-     * 获取PropertyChangeSupport实例
+     * 获取 PropertyChangeSupport 实例。Cling 的 DefaultServiceManager 通过反射调用，
+     * 用于管理 UPnP 事件订阅与通知（GENA 协议）。
      *
-     * Cling框架的DefaultServiceManager会通过反射调用此方法，
-     * 用于管理UPnP事件订阅和通知机制（GENA协议）
+     * @return 本服务的 PropertyChangeSupport 实例
      */
     fun getPropertyChangeSupport() = propertyChangeSupport
 
     /**
-     * 获取LastChange对象（LastChangeDelegator接口要求）
+     * 获取 LastChange 对象（LastChangeDelegator 接口要求）。
+     * LastChangeAwareServiceManager 调用此方法获取 LastChange，用于触发 GENA 事件推送。
      *
-     * LastChangeAwareServiceManager会调用·此方法获取LastChange实例，
-     * 用于触发GENA事件推送
+     * @return 本服务的 LastChange 实例
      */
     override fun getLastChange() = lastChange
 
     /**
-     * 为新订阅者提供初始状态（LastChangeDelegator接口要求）
+     * 为新订阅者提供初始状态（LastChangeDelegator 接口要求）。
+     * 当控制点（如爱奇艺）订阅 AVTransport 服务时，需要返回当前完整状态；
+     * LastChangeAwareServiceManager 会调用此方法生成初始事件通知。
      *
-     * 当控制点（如爱奇艺）订阅AVTransport服务时，需要返回当前完整状态。
-     * LastChangeAwareServiceManager会调用此方法生成初始事件通知。
+     * @param lc LastChange 实例，用于写入当前状态
+     * @param instanceId 实例 ID（本实现固定为 0）
+     * 无返回值。
      */
     override fun appendCurrentState(lc: LastChange, instanceId: UnsignedIntegerFourBytes) {
         try {
@@ -419,21 +432,20 @@ class MediaRendererService : LastChangeDelegator {
     }
 
     /**
-     * 返回当前活动的实例ID列表（LastChangeDelegator接口要求）
+     * 返回当前活动的实例 ID 列表（LastChangeDelegator 接口要求）。
+     * 本实现只支持单实例（ID=0），即一次仅播放一个视频。
      *
-     * AVTransport服务支持"逻辑实例"概念，每个实例可以独立播放。
-     * 本实现只支持单个实例（ID=0），即一次只能播放一个视频。
+     * @return 包含 INSTANCE_ID(0) 的数组
      */
     override fun getCurrentInstanceIds() = arrayOf(INSTANCE_ID)
 
     /**
-     * 设置URI动作
+     * 设置要播放的媒体 URI（UPnP SetAVTransportURI）。保存 URI/元数据并重置播放状态。
      *
-     * 设置要播放的媒体资源URI
-     *
-     * @param instanceId 实例ID
-     * @param uri 媒体资源URI
-     * @param metadata 媒体资源元数据
+     * @param instanceId 实例 ID（通常为 0）
+     * @param uri        媒体资源 URI（如 M3U8/MP4 地址）
+     * @param metadata   媒体元数据（DIDL-Lite 等，可空）
+     * 无返回值。
      */
     @UpnpAction
     fun setAVTransportURI(
@@ -455,12 +467,11 @@ class MediaRendererService : LastChangeDelegator {
     }
 
     /**
-     * 播放动作
+     * 播放动作（UPnP Play）。若有 URI 则启动 VideoPlayerActivity，否则尝试使用已有播放器继续播放。
      *
-     * 开始播放当前设置的媒体
-     *
-     * @param instanceId 实例ID
-     * @param speed 播放速度
+     * @param _instanceId 实例 ID（未使用）
+     * @param speed       播放速度（如 "1"）
+     * 无返回值。
      */
     @UpnpAction
     fun play(
@@ -507,11 +518,10 @@ class MediaRendererService : LastChangeDelegator {
         }
     }
     /**
-     * 暂停动作
+     * 暂停动作（UPnP Pause）。在主线程调用播放器 pause。
      *
-     * 暂停当前播放的媒体
-     *
-     * @param instanceId 实例ID
+     * @param _instanceId 实例 ID（未使用）
+     * 无返回值。
      */
     @UpnpAction
     fun pause(@UpnpInputArgument(name = "InstanceID") _instanceId: UnsignedIntegerFourBytes) {
@@ -527,11 +537,10 @@ class MediaRendererService : LastChangeDelegator {
     }
 
     /**
-     * 停止动作
+     * 停止动作（UPnP Stop）。在主线程调用播放器 stop。
      *
-     * 停止当前播放的媒体
-     *
-     * @param instanceId 实例ID
+     * @param _instanceId 实例 ID（未使用）
+     * 无返回值。
      */
     @UpnpAction
     fun stop(@UpnpInputArgument(name = "InstanceID") _instanceId: UnsignedIntegerFourBytes) {
@@ -547,13 +556,12 @@ class MediaRendererService : LastChangeDelegator {
 
 
     /**
-     * 跳转动作
+     * 跳转动作（UPnP Seek）。支持 REL_TIME/ABS_TIME，将目标时间字符串解析为毫秒后下发播放器。
      *
-     * 将播放位置跳转到指定时间
-     *
-     * @param instanceId 实例ID
-     * @param unit 时间单位
-     * @param target 目标位置
+     * @param _instanceId 实例 ID（未使用）
+     * @param unit        时间单位（如 "REL_TIME"、"ABS_TIME"）
+     * @param target      目标位置，HH:MM:SS 格式
+     * 无返回值。
      */
     @UpnpAction
     fun seek(
@@ -575,7 +583,13 @@ class MediaRendererService : LastChangeDelegator {
         }
     }
 
-    /** 获取传输信息 - 符合 UPnP AVTransport:1 规范 */
+    /**
+     * 获取传输信息（UPnP AVTransport:1 GetTransportInfo）。
+     * 返回当前传输状态、状态码与播放速度。
+     *
+     * @param _instanceID 实例 ID（未使用，本实现单实例）
+     * @return [org.fourthline.cling.support.model.TransportInfo] 包含状态、状态码、速度
+     */
     @UpnpAction(out = [
         UpnpOutputArgument(name = "CurrentTransportState", stateVariable = "TransportState", getterName = "getCurrentTransportState"),
         UpnpOutputArgument(name = "CurrentTransportStatus", stateVariable = "TransportStatus", getterName = "getCurrentTransportStatus"),
@@ -591,7 +605,13 @@ class MediaRendererService : LastChangeDelegator {
         )
     }
 
-    /** 获取媒体信息 - 符合 UPnP AVTransport:1 规范 */
+    /**
+     * 获取媒体信息（UPnP AVTransport:1 GetMediaInfo）。
+     * 返回当前 URI 与元数据（轨道数、时长等由状态变量提供）。
+     *
+     * @param _instanceID 实例 ID（未使用）
+     * @return [org.fourthline.cling.support.model.MediaInfo] 当前 URI 与元数据
+     */
     @UpnpAction(out = [
         UpnpOutputArgument(name = "NrTracks", stateVariable = "NumberOfTracks", getterName = "getNumberOfTracks"),
         UpnpOutputArgument(name = "MediaDuration", stateVariable = "CurrentMediaDuration", getterName = "getMediaDuration"),
@@ -612,7 +632,13 @@ class MediaRendererService : LastChangeDelegator {
         )
     }
 
-    /** 获取位置信息 - 符合 UPnP AVTransport:1 规范 */
+    /**
+     * 获取位置信息（UPnP AVTransport:1 GetPositionInfo）。
+     * 控制点（爱奇艺/B站等）轮询此方法获取播放进度（RelTime/AbsTime）。
+     *
+     * @param _instanceID 实例 ID（未使用）
+     * @return [org.fourthline.cling.support.model.PositionInfo] 轨道、时长、当前播放位置等
+     */
     @UpnpAction(out = [
         UpnpOutputArgument(name = "Track", stateVariable = "CurrentTrack", getterName = "getTrack"),
         UpnpOutputArgument(name = "TrackDuration", stateVariable = "CurrentTrackDuration", getterName = "getTrackDuration"),
